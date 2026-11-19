@@ -1,4 +1,4 @@
-import React, { useState } from "react"
+import React from "react"
 import {
   View,
   Text,
@@ -14,127 +14,89 @@ import {
 } from "react-native"
 import { Ionicons } from "@expo/vector-icons"
 import { AkahuAuth } from "../lib/akahu-auth"
-import { SecurityManager } from "../lib/security"
 import {
   useAkahuConnection,
   useAkahuStoredSettings,
   useSaveAkahuTokens,
+  useUnlockCredentialsForm,
   useWipeAkahuTokens,
 } from "../hooks/use-akahu-data"
-import { useAppStore } from "../lib/store"
+import { useSettingsFormStore } from "../lib/store"
+
+function maskToken(token: string, prefixLen = 12) {
+  if (!token) return ""
+  if (token.length <= prefixLen + 4) return token
+  return `${token.slice(0, prefixLen)}••••••••••••${token.slice(-2)}`
+}
 
 export default function SettingsScreen() {
-  const { setConnected } = useAppStore()
   const { data: connectionStatus, isLoading: isCheckingConnection } = useAkahuConnection()
   const { data: storedSettings } = useAkahuStoredSettings()
+
   const saveMutation = useSaveAkahuTokens()
+  const unlockMutation = useUnlockCredentialsForm()
   const wipeMutation = useWipeAkahuTokens()
 
-  const [draftAppToken, setDraftAppToken] = useState("")
-  const [draftUserToken, setDraftUserToken] = useState("")
-  const [showUserToken, setShowUserToken] = useState(false)
-  const [isUnlockedForEditing, setIsUnlockedForEditing] = useState(false)
-  const [showWipeModal, setShowWipeModal] = useState(false)
-  const [statusMessage, setStatusMessage] = useState<{ type: "error" | "success"; text: string } | null>(null)
+  const {
+    draftAppToken,
+    draftUserToken,
+    showUserToken,
+    isUnlockedForEditing,
+    showWipeModal,
+    setDraftAppToken,
+    setDraftUserToken,
+    toggleShowUserToken,
+    setShowWipeModal,
+  } = useSettingsFormStore()
 
-  const hasStoredTokens = !!storedSettings?.hasStoredTokens
+  // Derived state directly from TanStack Query + Zustand
+  const hasStoredTokens = Boolean(storedSettings?.hasStoredTokens)
   const isFormLocked = hasStoredTokens && !isUnlockedForEditing
-  const biometricEnabled = !!storedSettings?.biometricEnabled
+  const biometricEnabled = Boolean(storedSettings?.biometricEnabled)
+  const isConnected = Boolean(connectionStatus?.connected)
 
   const activeAppToken = isFormLocked ? storedSettings?.appToken || "" : draftAppToken
   const activeUserToken = isFormLocked ? storedSettings?.accessToken || "" : draftUserToken
 
-  const maskToken = (token: string, prefixLen = 12) => {
-    if (!token) return ""
-    if (token.length <= prefixLen + 4) return token
-    return `${token.slice(0, prefixLen)}••••••••••••`
+  // Derive status feedback directly from TanStack Query mutation states
+  const activeError =
+    (saveMutation.error instanceof Error && saveMutation.error.message) ||
+    (unlockMutation.error instanceof Error && unlockMutation.error.message) ||
+    (wipeMutation.error instanceof Error && wipeMutation.error.message) ||
+    null
+
+  const activeSuccess = saveMutation.isSuccess
+    ? `Tokens verified & locked with biometrics${saveMutation.data?.email ? ` (${saveMutation.data.email})` : ""}!`
+    : unlockMutation.isSuccess && isUnlockedForEditing
+      ? "Form unlocked for editing."
+      : wipeMutation.isSuccess && !hasStoredTokens
+        ? "Biometrics turned off and all Akahu tokens have been wiped from storage."
+        : null
+
+  const clearMutationStates = () => {
+    saveMutation.reset()
+    unlockMutation.reset()
+    wipeMutation.reset()
   }
 
-  const handleSaveAndBiometricUplift = async () => {
-    setStatusMessage(null)
-
-    try {
-      const user = await saveMutation.mutateAsync({
-        appToken: activeAppToken,
-        userToken: activeUserToken,
-      })
-
-      setIsUnlockedForEditing(false)
-      setShowUserToken(false)
-      setConnected(true)
-
-      setStatusMessage({
-        type: "success",
-        text: `Tokens verified & locked with biometrics${user?.email ? ` (${user.email})` : ""}!`,
-      })
-    } catch (error) {
-      setStatusMessage({
-        type: "error",
-        text: error instanceof Error ? error.message : "Failed to save Akahu tokens.",
-      })
-    }
+  const handleSave = () => {
+    clearMutationStates()
+    saveMutation.mutate({ appToken: activeAppToken, userToken: activeUserToken })
   }
 
-  const handleUnlockToEdit = async () => {
-    setStatusMessage(null)
-    const auth = await SecurityManager.promptBiometric("Authenticate to unlock and edit your Akahu tokens")
-    if (auth.success) {
-      setDraftAppToken(storedSettings?.appToken || "")
-      setDraftUserToken(storedSettings?.accessToken || "")
-      setIsUnlockedForEditing(true)
-      setStatusMessage({
-        type: "success",
-        text: "Form unlocked for editing.",
-      })
-    } else {
-      setStatusMessage({
-        type: "error",
-        text: auth.error || "Biometric unlock failed.",
-      })
-    }
+  const handleUnlockToEdit = () => {
+    clearMutationStates()
+    unlockMutation.mutate()
   }
 
-  const handleBiometricToggleAttempt = async (nextValue: boolean) => {
-    setStatusMessage(null)
-
+  const handleBiometricToggleAttempt = (nextValue: boolean) => {
+    clearMutationStates()
     if (nextValue) {
-      if (!activeAppToken.trim() || !activeUserToken.trim()) {
-        setStatusMessage({
-          type: "error",
-          text: "Enter your Akahu tokens below and tap Verify & Lock with Biometrics.",
-        })
-        return
-      }
-      await handleSaveAndBiometricUplift()
+      saveMutation.mutate({ appToken: activeAppToken, userToken: activeUserToken })
     } else {
       setShowWipeModal(true)
     }
   }
-
-  const handleConfirmDisableBiometricsAndWipe = async () => {
-    try {
-      await wipeMutation.mutateAsync()
-      setDraftAppToken("")
-      setDraftUserToken("")
-      setShowUserToken(false)
-      setIsUnlockedForEditing(false)
-      setConnected(false)
-      setShowWipeModal(false)
-
-      setStatusMessage({
-        type: "success",
-        text: "Biometrics turned off and all Akahu tokens have been wiped from storage.",
-      })
-    } catch (error) {
-      setShowWipeModal(false)
-      setStatusMessage({
-        type: "error",
-        text: error instanceof Error ? error.message : "Biometric verification required to turn off security.",
-      })
-    }
-  }
-
-  const isConnected = !!connectionStatus?.connected
 
   return (
     <KeyboardAvoidingView style={styles.container} behavior={Platform.OS === "ios" ? "padding" : undefined}>
@@ -253,34 +215,31 @@ export default function SettingsScreen() {
                 autoCorrect={false}
               />
               {!isFormLocked && (
-                <TouchableOpacity style={styles.eyeButton} onPress={() => setShowUserToken((v) => !v)}>
+                <TouchableOpacity style={styles.eyeButton} onPress={toggleShowUserToken}>
                   <Ionicons name={showUserToken ? "eye-off-outline" : "eye-outline"} size={20} color="#64748b" />
                 </TouchableOpacity>
               )}
             </View>
           </View>
 
-          {statusMessage && (
-            <View
-              style={[styles.messageBanner, statusMessage.type === "error" ? styles.errorBanner : styles.successBanner]}
-            >
-              <Ionicons
-                name={statusMessage.type === "error" ? "alert-circle" : "checkmark-circle"}
-                size={18}
-                color={statusMessage.type === "error" ? "#dc2626" : "#059669"}
-              />
-              <Text
-                style={[styles.messageText, statusMessage.type === "error" ? styles.errorText : styles.successText]}
-              >
-                {statusMessage.text}
-              </Text>
+          {activeError && (
+            <View style={[styles.messageBanner, styles.errorBanner]}>
+              <Ionicons name="alert-circle" size={18} color="#dc2626" />
+              <Text style={[styles.messageText, styles.errorText]}>{activeError}</Text>
+            </View>
+          )}
+
+          {!activeError && activeSuccess && (
+            <View style={[styles.messageBanner, styles.successBanner]}>
+              <Ionicons name="checkmark-circle" size={18} color="#059669" />
+              <Text style={[styles.messageText, styles.successText]}>{activeSuccess}</Text>
             </View>
           )}
 
           {!isFormLocked ? (
             <TouchableOpacity
               style={[styles.saveButton, saveMutation.isPending && styles.buttonDisabled]}
-              onPress={handleSaveAndBiometricUplift}
+              onPress={handleSave}
               disabled={saveMutation.isPending}
             >
               {saveMutation.isPending ? (
@@ -322,7 +281,10 @@ export default function SettingsScreen() {
 
               <TouchableOpacity
                 style={styles.modalConfirmButton}
-                onPress={handleConfirmDisableBiometricsAndWipe}
+                onPress={() => {
+                  clearMutationStates()
+                  wipeMutation.mutate()
+                }}
                 disabled={wipeMutation.isPending}
               >
                 <Ionicons name="finger-print" size={18} color="#ffffff" />

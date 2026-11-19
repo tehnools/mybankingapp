@@ -1,50 +1,53 @@
+import { AppState, type AppStateStatus } from "react-native"
 import { create } from "zustand"
+import type { AppStoreState, SettingsFormState } from "../types"
 
-export interface BankAccount {
-  id: string
-  name: string
-  bank: string
-  accountNumber: string
-  balance: number
-  availableBalance?: number
-  type: "checking" | "savings" | "credit" | "investment" | "kiwisaver" | "loan"
-  status?: "ACTIVE" | "INACTIVE"
-  lastRefreshed?: string
-}
-
-export interface Transaction {
-  id: string
-  accountId: string
-  amount: number
-  description: string
-  merchantName?: string
-  category: string
-  date: string
-  type: "debit" | "credit"
-  rawType?: string
-  meta?: {
-    particulars?: string
-    code?: string
-    reference?: string
-    other_account?: string
-    card_suffix?: string
-  }
-}
-
-interface AppState {
-  accounts: BankAccount[]
-  transactions: Transaction[]
-  isConnected: boolean
-  setAccounts: (accounts: BankAccount[]) => void
-  setTransactions: (transactions: Transaction[]) => void
-  setConnected: (connected: boolean) => void
-}
-
-export const useAppStore = create<AppState>((set) => ({
+export const useAppStore = create<AppStoreState>((set) => ({
   accounts: [],
   transactions: [],
   isConnected: false,
+  isSessionUnlocked: false,
   setAccounts: (accounts) => set({ accounts }),
   setTransactions: (transactions) => set({ transactions }),
   setConnected: (connected) => set({ isConnected: connected }),
+  setSessionUnlocked: (unlocked) => set({ isSessionUnlocked: unlocked }),
 }))
+
+export const useSettingsFormStore = create<SettingsFormState>((set) => ({
+  draftAppToken: "",
+  draftUserToken: "",
+  showUserToken: false,
+  isUnlockedForEditing: false,
+  showWipeModal: false,
+  setDraftAppToken: (draftAppToken) => set({ draftAppToken }),
+  setDraftUserToken: (draftUserToken) => set({ draftUserToken }),
+  toggleShowUserToken: () => set((s) => ({ showUserToken: !s.showUserToken })),
+  unlockFormWithTokens: (draftAppToken, draftUserToken) =>
+    set({
+      draftAppToken,
+      draftUserToken,
+      isUnlockedForEditing: true,
+    }),
+  lockForm: () =>
+    set({
+      isUnlockedForEditing: false,
+      showUserToken: false,
+    }),
+  resetForm: () =>
+    set({
+      draftAppToken: "",
+      draftUserToken: "",
+      showUserToken: false,
+      isUnlockedForEditing: false,
+      showWipeModal: false,
+    }),
+  setShowWipeModal: (showWipeModal) => set({ showWipeModal }),
+}))
+
+// Automatically lock the session and credential form whenever the app is closed or sent to the background
+AppState.addEventListener("change", (nextState: AppStateStatus) => {
+  if (nextState === "background") {
+    useAppStore.getState().setSessionUnlocked(false)
+    useSettingsFormStore.getState().lockForm()
+  }
+})
