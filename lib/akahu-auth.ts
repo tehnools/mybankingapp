@@ -1,29 +1,94 @@
 import * as Linking from "expo-linking"
-import * as SecureStore from "expo-secure-store"
 import { akahuClient } from "./akahu-client"
+import { SecurityManager } from "./security"
 
-const AKAHU_APP_TOKEN = "app_token_your_akahu_app_token_here" // Replace with your Akahu app token
 const REDIRECT_URI = Linking.createURL("/auth/callback")
 
 export class AkahuAuth {
-  static async initiateConnection() {
-    try {
-      // Generate a random state parameter for security
-      const state = Math.random().toString(36).substring(2, 15)
-      await SecureStore.setItemAsync("akahu_auth_state", state)
+  /**
+   * Opens the Akahu portal so the user can sign up and connect their NZ bank accounts.
+   */
+  static async openAkahuAccountSetup() {
+    await Linking.openURL("https://my.akahu.nz/connections")
+  }
 
-      // Construct Akahu OAuth URL
+  /**
+   * Opens the Akahu Personal App developer page so the user can create & copy their App Token and User Token.
+   */
+  static async openAkahuDeveloperTokens() {
+    await Linking.openURL("https://my.akahu.nz/developers")
+  }
+
+  /**
+   * Validates and saves the user's Akahu Personal App credentials (`app_token_...` and `user_token_...`).
+   */
+  static async connectWithPersonalTokens(appToken: string, userAccessToken: string) {
+    try {
+      const cleanAppToken = appToken.trim()
+      const cleanUserToken = userAccessToken.replace(/^Bearer\s+/i, "").trim()
+
+      if (!cleanAppToken.startsWith("app_token_")) {
+        return {
+          success: false,
+          error: "App ID Token must start with 'app_token_'",
+        }
+      }
+
+      if (!cleanUserToken.startsWith("user_token_")) {
+        return {
+          success: false,
+          error: "User Access Token must start with 'user_token_'",
+        }
+      }
+
+      await akahuClient.setCredentials(cleanAppToken, cleanUserToken)
+
+      // Verify credentials by calling /me
+      const meResponse = await akahuClient.getMe()
+      if (!meResponse?.item) {
+        await akahuClient.clearCredentials()
+        return {
+          success: false,
+          error: "Could not verify credentials with Akahu.",
+        }
+      }
+
+      return {
+        success: true,
+        user: meResponse.item,
+      }
+    } catch (error) {
+      await akahuClient.clearCredentials()
+      return {
+        success: false,
+        error: error instanceof Error ? error.message : "Failed to connect to Akahu",
+      }
+    }
+  }
+
+  /**
+   * Optional OAuth2 flow for commercial Akahu apps.
+   */
+  static async initiateConnection(appToken?: string) {
+    try {
+      const stored = await akahuClient.getStoredCredentials()
+      const clientId = appToken || stored.appToken
+      if (!clientId) {
+        return false
+      }
+
+      const state = Math.random().toString(36).substring(2, 15)
+      await SecurityManager.storeSecureData("akahu_auth_state", state)
+
       const authUrl =
         `https://oauth.akahu.io/?` +
         `response_type=code&` +
-        `client_id=${AKAHU_APP_TOKEN}&` +
+        `client_id=${encodeURIComponent(clientId)}&` +
         `redirect_uri=${encodeURIComponent(REDIRECT_URI)}&` +
-        `scope=ACCOUNTS:READ TRANSACTIONS:READ&` +
+        `scope=${encodeURIComponent("ENDURING_CONSENT")}&` +
         `state=${state}`
 
-      // Open the OAuth URL in the browser
       await Linking.openURL(authUrl)
-
       return true
     } catch (error) {
       console.error("Failed to initiate Akahu connection:", error)
@@ -34,7 +99,7 @@ export class AkahuAuth {
   static async handleAuthCallback(url: string) {
     try {
       const { queryParams } = Linking.parse(url)
-      const { code, state, error } = queryParams as {
+      const { code, state, error } = (queryParams || {}) as {
         code?: string
         state?: string
         error?: string
@@ -48,13 +113,12 @@ export class AkahuAuth {
         throw new Error("Missing authorization code or state")
       }
 
-      // Verify state parameter
-      const storedState = await SecureStore.getItemAsync("akahu_auth_state")
+      const storedState = await SecurityManager.getSecureData("akahu_auth_state")
       if (state !== storedState) {
         throw new Error("Invalid state parameter")
       }
 
-      // Exchange authorization code for access token
+      const { appToken } = await akahuClient.getStoredCredentials()
       const tokenResponse = await fetch("https://api.akahu.io/v1/token", {
         method: "POST",
         headers: {
@@ -62,8 +126,8 @@ export class AkahuAuth {
         },
         body: JSON.stringify({
           grant_type: "authorization_code",
-          client_id: AKAHU_APP_TOKEN,
-          code: code,
+          client_id: appToken,
+          code,
           redirect_uri: REDIRECT_URI,
         }),
       })
@@ -73,12 +137,8 @@ export class AkahuAuth {
       }
 
       const tokenData = await tokenResponse.json()
-
-      // Store the access token securely
       await akahuClient.setAccessToken(tokenData.access_token)
-
-      // Clean up state
-      await SecureStore.deleteItemAsync("akahu_auth_state")
+      await SecurityManager.deleteSecureData("akahu_auth_state")
 
       return {
         success: true,
@@ -95,7 +155,7 @@ export class AkahuAuth {
 
   static async disconnect() {
     try {
-      await akahuClient.clearAccessToken()
+      await akahuClient.clearCredentials()
       return true
     } catch (error) {
       console.error("Failed to disconnect:", error)
@@ -107,7 +167,7 @@ export class AkahuAuth {
     try {
       await akahuClient.initialize()
       const me = await akahuClient.getMe()
-      return !!me
+      return !!me?.item
     } catch (error) {
       return false
     }

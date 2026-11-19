@@ -1,20 +1,59 @@
+import { Platform } from "react-native"
 import * as SecureStore from "expo-secure-store"
 import * as LocalAuthentication from "expo-local-authentication"
 import * as Crypto from "expo-crypto"
 import * as Device from "expo-device"
 
+// Cross-platform secure storage helper (uses SecureStore on iOS/Android, localStorage on web preview)
+async function setItem(key: string, value: string): Promise<void> {
+  if (Platform.OS === "web") {
+    if (typeof window !== "undefined" && window.localStorage) {
+      window.localStorage.setItem(key, value)
+    }
+    return
+  }
+  await SecureStore.setItemAsync(key, value)
+}
+
+async function getItem(key: string): Promise<string | null> {
+  if (Platform.OS === "web") {
+    if (typeof window !== "undefined" && window.localStorage) {
+      return window.localStorage.getItem(key)
+    }
+    return null
+  }
+  return await SecureStore.getItemAsync(key)
+}
+
+async function deleteItem(key: string): Promise<void> {
+  if (Platform.OS === "web") {
+    if (typeof window !== "undefined" && window.localStorage) {
+      window.localStorage.removeItem(key)
+    }
+    return
+  }
+  await SecureStore.deleteItemAsync(key)
+}
+
 export class SecurityManager {
-  private static readonly ENCRYPTION_KEY = "nz_money_manager_key"
   private static readonly BIOMETRIC_KEY = "biometric_enabled"
   private static readonly SESSION_KEY = "user_session"
-  private static readonly LAST_ACTIVITY_KEY = "last_activity"
 
   // Session timeout in milliseconds (15 minutes)
   private static readonly SESSION_TIMEOUT = 15 * 60 * 1000
 
   static async initializeSecurity() {
     try {
-      // Check if device supports biometric authentication
+      if (Platform.OS === "web") {
+        return {
+          hasHardware: false,
+          isEnrolled: false,
+          supportedTypes: [],
+          deviceName: "Web Browser",
+          isDevice: false,
+        }
+      }
+
       const hasHardware = await LocalAuthentication.hasHardwareAsync()
       const isEnrolled = await LocalAuthentication.isEnrolledAsync()
       const supportedTypes = await LocalAuthentication.supportedAuthenticationTypesAsync()
@@ -41,7 +80,7 @@ export class SecurityManager {
       })
 
       if (result.success) {
-        await SecureStore.setItemAsync(this.BIOMETRIC_KEY, "true")
+        await setItem(this.BIOMETRIC_KEY, "true")
         return true
       }
 
@@ -54,7 +93,7 @@ export class SecurityManager {
 
   static async disableBiometricAuth(): Promise<boolean> {
     try {
-      await SecureStore.deleteItemAsync(this.BIOMETRIC_KEY)
+      await deleteItem(this.BIOMETRIC_KEY)
       return true
     } catch (error) {
       console.error("Failed to disable biometric auth:", error)
@@ -64,7 +103,7 @@ export class SecurityManager {
 
   static async isBiometricEnabled(): Promise<boolean> {
     try {
-      const enabled = await SecureStore.getItemAsync(this.BIOMETRIC_KEY)
+      const enabled = await getItem(this.BIOMETRIC_KEY)
       return enabled === "true"
     } catch (error) {
       return false
@@ -74,7 +113,7 @@ export class SecurityManager {
   static async authenticateWithBiometrics(): Promise<boolean> {
     try {
       const isEnabled = await this.isBiometricEnabled()
-      if (!isEnabled) return true // Skip if not enabled
+      if (!isEnabled) return true
 
       const result = await LocalAuthentication.authenticateAsync({
         promptMessage: "Authenticate to access your financial data",
@@ -103,7 +142,7 @@ export class SecurityManager {
 
   static async storeSecureData(key: string, value: string): Promise<boolean> {
     try {
-      await SecureStore.setItemAsync(key, value)
+      await setItem(key, value)
       return true
     } catch (error) {
       console.error("Failed to store secure data:", error)
@@ -113,7 +152,7 @@ export class SecurityManager {
 
   static async getSecureData(key: string): Promise<string | null> {
     try {
-      return await SecureStore.getItemAsync(key)
+      return await getItem(key)
     } catch (error) {
       console.error("Failed to get secure data:", error)
       return null
@@ -122,7 +161,7 @@ export class SecurityManager {
 
   static async deleteSecureData(key: string): Promise<boolean> {
     try {
-      await SecureStore.deleteItemAsync(key)
+      await deleteItem(key)
       return true
     } catch (error) {
       console.error("Failed to delete secure data:", error)
@@ -132,7 +171,7 @@ export class SecurityManager {
 
   static async createSession(): Promise<string> {
     try {
-      const sessionId = await Crypto.randomUUID()
+      const sessionId = Crypto.randomUUID()
       const sessionData = {
         id: sessionId,
         createdAt: Date.now(),
@@ -140,8 +179,6 @@ export class SecurityManager {
       }
 
       await this.storeSecureData(this.SESSION_KEY, JSON.stringify(sessionData))
-      await this.updateLastActivity()
-
       return sessionId
     } catch (error) {
       console.error("Failed to create session:", error)
@@ -194,7 +231,7 @@ export class SecurityManager {
 
   static async clearAllSecureData(): Promise<void> {
     try {
-      // Clear all sensitive data
+      await this.deleteSecureData("akahu_app_token")
       await this.deleteSecureData("akahu_access_token")
       await this.deleteSecureData(this.SESSION_KEY)
       await this.deleteSecureData(this.BIOMETRIC_KEY)

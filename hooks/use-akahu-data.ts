@@ -1,60 +1,25 @@
-import { useQuery } from "@tanstack/react-query"
-import { akahuClient } from "../lib/akahu-client"
-import type { BankAccount, Transaction } from "../lib/store"
+import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query"
+import { akahuClient, type AkahuRawAccount } from "../lib/akahu-client"
+import type { BankAccount } from "../lib/store"
 
-export function useAkahuAccounts() {
-  return useQuery({
-    queryKey: ["akahu", "accounts"],
-    queryFn: async () => {
-      const response = await akahuClient.getAccounts()
-
-      // Transform Akahu account data to our format
-      const accounts: BankAccount[] =
-        response.items?.map((account: any) => ({
-          id: account._id,
-          name: account.name,
-          bank: account.connection.name,
-          accountNumber: account.formatted_account,
-          balance: account.balance?.current || 0,
-          type: account.type === "CREDIT_CARD" ? "credit" : account.type === "SAVINGS" ? "savings" : "checking",
-        })) || []
-
-      return accounts
-    },
-    enabled: false, // Only run when explicitly called
-  })
-}
-
-export function useAkahuTransactions(accountId?: string, days = 30) {
-  return useQuery({
-    queryKey: ["akahu", "transactions", accountId, days],
-    queryFn: async () => {
-      const endDate = new Date()
-      const startDate = new Date()
-      startDate.setDate(startDate.getDate() - days)
-
-      const response = await akahuClient.getTransactions(accountId, {
-        start: startDate.toISOString().split("T")[0],
-        end: endDate.toISOString().split("T")[0],
-        size: 100,
-      })
-
-      // Transform Akahu transaction data to our format
-      const transactions: Transaction[] =
-        response.items?.map((transaction: any) => ({
-          id: transaction._id,
-          accountId: transaction._account,
-          amount: Math.abs(transaction.amount),
-          description: transaction.description || transaction.merchant?.name || "Unknown",
-          category: transaction.category?.groups?.personal_finance?.primary || "Other",
-          date: transaction.date,
-          type: transaction.amount < 0 ? "debit" : "credit",
-        })) || []
-
-      return transactions
-    },
-    enabled: false, // Only run when explicitly called
-  })
+function mapAkahuAccountType(rawType?: string): BankAccount["type"] {
+  switch (rawType?.toUpperCase()) {
+    case "CREDITCARD":
+    case "CREDIT_CARD":
+      return "credit"
+    case "SAVINGS":
+    case "TERMDEPOSIT":
+      return "savings"
+    case "KIWISAVER":
+      return "kiwisaver"
+    case "INVESTMENT":
+      return "investment"
+    case "LOAN":
+    case "MORTGAGE":
+      return "loan"
+    default:
+      return "checking"
+  }
 }
 
 export function useAkahuConnection() {
@@ -62,12 +27,57 @@ export function useAkahuConnection() {
     queryKey: ["akahu", "connection"],
     queryFn: async () => {
       try {
+        await akahuClient.initialize()
+        const { appToken, accessToken } = await akahuClient.getStoredCredentials()
+        if (!appToken || !accessToken) {
+          return { connected: false, user: null }
+        }
         const me = await akahuClient.getMe()
-        return { connected: true, user: me }
+        return { connected: !!me?.item, user: me?.item || null }
       } catch (error) {
         return { connected: false, user: null }
       }
     },
     retry: false,
+  })
+}
+
+export function useAkahuAccounts() {
+  const { data: connection } = useAkahuConnection()
+
+  return useQuery({
+    queryKey: ["akahu", "accounts"],
+    queryFn: async () => {
+      const response = await akahuClient.getAccounts()
+
+      const accounts: BankAccount[] =
+        response.items?.map((account: AkahuRawAccount) => ({
+          id: account._id,
+          name: account.name,
+          bank: account.connection?.name || "NZ Bank",
+          accountNumber: account.formatted_account || "••••",
+          balance: account.balance?.current ?? 0,
+          availableBalance: account.balance?.available,
+          type: mapAkahuAccountType(account.type),
+          status: account.status,
+          lastRefreshed: account.refreshed?.balance || account.refreshed?.transactions,
+        })) || []
+
+      return accounts
+    },
+    enabled: !!connection?.connected,
+  })
+}
+
+export function useRefreshAkahu() {
+  const queryClient = useQueryClient()
+
+  return useMutation({
+    mutationFn: async (accountOrConnectionId?: string) => {
+      return await akahuClient.refreshAccounts(accountOrConnectionId)
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["akahu", "accounts"] })
+    },
   })
 }

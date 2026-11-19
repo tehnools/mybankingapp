@@ -4,30 +4,39 @@
     "slug": "nz-money-manager",
     "version": "1.0.0",
     "orientation": "portrait",
-    "icon": "./assets/icon.png",
     "userInterfaceStyle": "automatic",
     "splash": {
-      "image": "./assets/splash.png",
       "resizeMode": "contain",
-      "backgroundColor": "#ffffff"
+      "backgroundColor": "#1a365d"
     },
     "assetBundlePatterns": ["**/*"],
     "ios": {
       "supportsTablet": true,
-      "bundleIdentifier": "com.nzmoney.manager"
+      "bundleIdentifier": "com.nzmoney.manager",
+      "infoPlist": {
+        "NSFaceIDUsageDescription": "Allow NZ Money Manager to use Face ID to protect your financial data."
+      }
     },
     "android": {
       "adaptiveIcon": {
-        "foregroundImage": "./assets/adaptive-icon.png",
-        "backgroundColor": "#ffffff"
+        "backgroundColor": "#1a365d"
       },
-      "package": "com.nzmoney.manager"
+      "package": "com.nzmoney.manager",
+      "permissions": ["USE_BIOMETRIC", "USE_FINGERPRINT"]
     },
     "web": {
-      "favicon": "./assets/favicon.png",
       "bundler": "metro"
     },
     "scheme": "nz-money-manager",
-    "plugins": ["expo-router", "expo-secure-store"]
+    "plugins": [
+      "expo-router",
+      "expo-secure-store",
+      [
+        "expo-local-authentication",
+        {
+          "faceIDPermission": "Allow NZ Money Manager to use Face ID to protect your financial data."
+        }
+      ]
+    ]
   }
 }

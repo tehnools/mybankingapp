@@ -6,7 +6,10 @@ export interface BankAccount {
   bank: string
   accountNumber: string
   balance: number
-  type: "checking" | "savings" | "credit"
+  availableBalance?: number
+  type: "checking" | "savings" | "credit" | "investment" | "kiwisaver" | "loan"
+  status?: "ACTIVE" | "INACTIVE"
+  lastRefreshed?: string
 }
 
 export interface Transaction {
@@ -14,9 +17,18 @@ export interface Transaction {
   accountId: string
   amount: number
   description: string
+  merchantName?: string
   category: string
   date: string
   type: "debit" | "credit"
+  rawType?: string
+  meta?: {
+    particulars?: string
+    code?: string
+    reference?: string
+    other_account?: string
+    card_suffix?: string
+  }
 }
 
 interface AppState {

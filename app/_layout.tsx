@@ -1,14 +1,14 @@
-import { Stack } from "expo-router"
+import { Tabs } from "expo-router"
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query"
 import { SafeAreaProvider } from "react-native-safe-area-context"
 import { StatusBar } from "expo-status-bar"
-import AuthGuard from "../components/auth-guard"
+import { Ionicons } from "@expo/vector-icons"
 
 const queryClient = new QueryClient({
   defaultOptions: {
     queries: {
-      staleTime: 1000 * 60 * 5, // 5 minutes
-      retry: 2,
+      staleTime: 1000 * 60 * 5,
+      retry: 1,
     },
   },
 })
@@ -17,27 +17,46 @@ export default function RootLayout() {
   return (
     <SafeAreaProvider>
       <QueryClientProvider client={queryClient}>
-        <AuthGuard>
-          <Stack
-            screenOptions={{
-              headerStyle: {
-                backgroundColor: "#1a365d",
-              },
-              headerTintColor: "#ffffff",
-              headerTitleStyle: {
-                fontWeight: "600",
-              },
+        <Tabs
+          screenOptions={{
+            headerStyle: {
+              backgroundColor: "#1a365d",
+            },
+            headerTintColor: "#ffffff",
+            headerTitleStyle: {
+              fontWeight: "600",
+            },
+            tabBarActiveTintColor: "#3b82f6",
+            tabBarInactiveTintColor: "#94a3b8",
+            tabBarStyle: {
+              backgroundColor: "#ffffff",
+              borderTopColor: "#e2e8f0",
+            },
+          }}
+        >
+          <Tabs.Screen
+            name="index"
+            options={{
+              title: "Home",
+              tabBarIcon: ({ color, size }) => <Ionicons name="home-outline" size={size} color={color} />,
             }}
-          >
-            <Stack.Screen name="index" options={{ title: "Money Manager", headerShown: false }} />
-            <Stack.Screen name="accounts" options={{ title: "Bank Accounts" }} />
-            <Stack.Screen name="transactions" options={{ title: "Transactions" }} />
-            <Stack.Screen name="insights" options={{ title: "Financial Insights" }} />
-            <Stack.Screen name="settings" options={{ title: "Settings" }} />
-            <Stack.Screen name="auth/callback" options={{ headerShown: false }} />
-          </Stack>
-        </AuthGuard>
-        <StatusBar style="auto" />
+          />
+          <Tabs.Screen
+            name="accounts"
+            options={{
+              title: "Accounts",
+              tabBarIcon: ({ color, size }) => <Ionicons name="card-outline" size={size} color={color} />,
+            }}
+          />
+          <Tabs.Screen
+            name="settings"
+            options={{
+              title: "Settings",
+              tabBarIcon: ({ color, size }) => <Ionicons name="settings-outline" size={size} color={color} />,
+            }}
+          />
+        </Tabs>
+        <StatusBar style="light" />
       </QueryClientProvider>
     </SafeAreaProvider>
   )
