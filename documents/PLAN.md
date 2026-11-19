@@ -26,7 +26,7 @@ By guiding each user to sign up on Akahu as a Personal App developer, accept Aka
 A step-by-step wizard:
 
 1. **Step 1 — Sign Up & Connect NZ Bank on Akahu:**
-   - Button redirects user to `https://my.akahu.nz/connections` to create their Akahu account and link their NZ bank accounts.
+   - Button redirects user to `https://my.akahu.nz` to create their Akahu account and link their NZ bank accounts.
 2. **Step 2 — Developer Agreement & Token Creation:**
    - Button redirects user to `https://my.akahu.nz/developers` to accept the Akahu Personal App Developer Agreement and create their Personal App.
 3. **Step 3 — Auto-Paste Token Form (`expo-clipboard` + `AppState`):**
