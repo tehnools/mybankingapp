@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from "react"
+import React, { useState } from "react"
 import {
   View,
   Text,
@@ -7,102 +7,131 @@ import {
   TouchableOpacity,
   ScrollView,
   ActivityIndicator,
-  Alert,
+  Switch,
+  Modal,
   KeyboardAvoidingView,
   Platform,
 } from "react-native"
 import { Ionicons } from "@expo/vector-icons"
-import { useQueryClient } from "@tanstack/react-query"
 import { AkahuAuth } from "../lib/akahu-auth"
-import { akahuClient } from "../lib/akahu-client"
-import { useAkahuConnection } from "../hooks/use-akahu-data"
+import { SecurityManager } from "../lib/security"
+import {
+  useAkahuConnection,
+  useAkahuStoredSettings,
+  useSaveAkahuTokens,
+  useWipeAkahuTokens,
+} from "../hooks/use-akahu-data"
 import { useAppStore } from "../lib/store"
 
 export default function SettingsScreen() {
-  const queryClient = useQueryClient()
   const { setConnected } = useAppStore()
   const { data: connectionStatus, isLoading: isCheckingConnection } = useAkahuConnection()
+  const { data: storedSettings } = useAkahuStoredSettings()
+  const saveMutation = useSaveAkahuTokens()
+  const wipeMutation = useWipeAkahuTokens()
 
-  const [appToken, setAppToken] = useState("")
-  const [userToken, setUserToken] = useState("")
+  const [draftAppToken, setDraftAppToken] = useState("")
+  const [draftUserToken, setDraftUserToken] = useState("")
   const [showUserToken, setShowUserToken] = useState(false)
-  const [isSaving, setIsSaving] = useState(false)
-  const [statusMessage, setStatusMessage] = useState<{
-    type: "error" | "success"
-    text: string
-  } | null>(null)
+  const [isUnlockedForEditing, setIsUnlockedForEditing] = useState(false)
+  const [showWipeModal, setShowWipeModal] = useState(false)
+  const [statusMessage, setStatusMessage] = useState<{ type: "error" | "success"; text: string } | null>(null)
 
-  useEffect(() => {
-    const loadStoredTokens = async () => {
-      const stored = await akahuClient.getStoredCredentials()
-      if (stored.appToken) setAppToken(stored.appToken)
-      if (stored.accessToken) setUserToken(stored.accessToken)
-    }
-    loadStoredTokens()
-  }, [])
+  const hasStoredTokens = !!storedSettings?.hasStoredTokens
+  const isFormLocked = hasStoredTokens && !isUnlockedForEditing
+  const biometricEnabled = !!storedSettings?.biometricEnabled
 
-  const handleSaveAndVerify = async () => {
+  const activeAppToken = isFormLocked ? storedSettings?.appToken || "" : draftAppToken
+  const activeUserToken = isFormLocked ? storedSettings?.accessToken || "" : draftUserToken
+
+  const maskToken = (token: string, prefixLen = 12) => {
+    if (!token) return ""
+    if (token.length <= prefixLen + 4) return token
+    return `${token.slice(0, prefixLen)}••••••••••••`
+  }
+
+  const handleSaveAndBiometricUplift = async () => {
     setStatusMessage(null)
 
-    if (!appToken.trim() || !userToken.trim()) {
-      setStatusMessage({
-        type: "error",
-        text: "Please enter both your App ID Token and User Access Token.",
-      })
-      return
-    }
-
-    setIsSaving(true)
     try {
-      const result = await AkahuAuth.connectWithPersonalTokens(appToken, userToken)
+      const user = await saveMutation.mutateAsync({
+        appToken: activeAppToken,
+        userToken: activeUserToken,
+      })
 
-      if (!result.success) {
-        setStatusMessage({
-          type: "error",
-          text: result.error || "Could not verify tokens with Akahu.",
-        })
-        return
-      }
-
+      setIsUnlockedForEditing(false)
+      setShowUserToken(false)
       setConnected(true)
-      await queryClient.invalidateQueries({ queryKey: ["akahu"] })
+
       setStatusMessage({
         type: "success",
-        text: `Connected to Akahu${result.user?.email ? ` as ${result.user.email}` : ""}!`,
+        text: `Tokens verified & locked with biometrics${user?.email ? ` (${user.email})` : ""}!`,
       })
     } catch (error) {
       setStatusMessage({
         type: "error",
         text: error instanceof Error ? error.message : "Failed to save Akahu tokens.",
       })
-    } finally {
-      setIsSaving(false)
     }
   }
 
-  const handleDisconnect = async () => {
-    const performDisconnect = async () => {
-      await AkahuAuth.disconnect()
-      setAppToken("")
-      setUserToken("")
+  const handleUnlockToEdit = async () => {
+    setStatusMessage(null)
+    const auth = await SecurityManager.promptBiometric("Authenticate to unlock and edit your Akahu tokens")
+    if (auth.success) {
+      setDraftAppToken(storedSettings?.appToken || "")
+      setDraftUserToken(storedSettings?.accessToken || "")
+      setIsUnlockedForEditing(true)
+      setStatusMessage({
+        type: "success",
+        text: "Form unlocked for editing.",
+      })
+    } else {
+      setStatusMessage({
+        type: "error",
+        text: auth.error || "Biometric unlock failed.",
+      })
+    }
+  }
+
+  const handleBiometricToggleAttempt = async (nextValue: boolean) => {
+    setStatusMessage(null)
+
+    if (nextValue) {
+      if (!activeAppToken.trim() || !activeUserToken.trim()) {
+        setStatusMessage({
+          type: "error",
+          text: "Enter your Akahu tokens below and tap Verify & Lock with Biometrics.",
+        })
+        return
+      }
+      await handleSaveAndBiometricUplift()
+    } else {
+      setShowWipeModal(true)
+    }
+  }
+
+  const handleConfirmDisableBiometricsAndWipe = async () => {
+    try {
+      await wipeMutation.mutateAsync()
+      setDraftAppToken("")
+      setDraftUserToken("")
+      setShowUserToken(false)
+      setIsUnlockedForEditing(false)
       setConnected(false)
-      setStatusMessage(null)
-      await queryClient.invalidateQueries({ queryKey: ["akahu"] })
-    }
+      setShowWipeModal(false)
 
-    if (Platform.OS === "web") {
-      await performDisconnect()
-      return
+      setStatusMessage({
+        type: "success",
+        text: "Biometrics turned off and all Akahu tokens have been wiped from storage.",
+      })
+    } catch (error) {
+      setShowWipeModal(false)
+      setStatusMessage({
+        type: "error",
+        text: error instanceof Error ? error.message : "Biometric verification required to turn off security.",
+      })
     }
-
-    Alert.alert("Disconnect Akahu", "Remove your saved Akahu tokens from this device?", [
-      { text: "Cancel", style: "cancel" },
-      {
-        text: "Disconnect",
-        style: "destructive",
-        onPress: performDisconnect,
-      },
-    ])
   }
 
   const isConnected = !!connectionStatus?.connected
@@ -113,13 +142,17 @@ export default function SettingsScreen() {
         {/* Connection Status Card */}
         <View style={[styles.statusCard, isConnected ? styles.statusCardConnected : styles.statusCardDisconnected]}>
           <Ionicons
-            name={isConnected ? "checkmark-circle" : "information-circle"}
+            name={isConnected ? "shield-checkmark" : "information-circle"}
             size={24}
             color={isConnected ? "#059669" : "#64748b"}
           />
           <View style={styles.statusTextWrapper}>
             <Text style={styles.statusTitle}>
-              {isCheckingConnection ? "Checking connection..." : isConnected ? "Akahu Connected" : "Not Connected"}
+              {isCheckingConnection
+                ? "Checking connection..."
+                : isConnected
+                  ? "Akahu Connected & Locked"
+                  : "Not Connected"}
             </Text>
             <Text style={styles.statusSubtitle}>
               {isConnected
@@ -129,54 +162,101 @@ export default function SettingsScreen() {
           </View>
         </View>
 
+        {/* Biometric Security Toggle Card */}
+        <View style={styles.card}>
+          <View style={styles.biometricRow}>
+            <View style={styles.biometricIconBox}>
+              <Ionicons name="finger-print" size={22} color="#3b82f6" />
+            </View>
+            <View style={styles.biometricTextCol}>
+              <Text style={styles.biometricTitle}>Biometric Security</Text>
+              <Text style={styles.biometricSubtitle}>
+                {biometricEnabled
+                  ? "Tokens are locked behind biometrics. Turning this off wipes all saved tokens."
+                  : "Automatically enabled when you verify & save your tokens."}
+              </Text>
+            </View>
+            <Switch
+              value={biometricEnabled}
+              onValueChange={handleBiometricToggleAttempt}
+              trackColor={{ false: "#cbd5e1", true: "#3b82f6" }}
+              thumbColor="#ffffff"
+            />
+          </View>
+        </View>
+
         {/* Akahu Token Form */}
         <View style={styles.card}>
-          <Text style={styles.cardTitle}>Akahu Credentials</Text>
-          <Text style={styles.cardDescription}>
-            Get your Personal App tokens from my.akahu.nz/developers and save them securely on this device.
-          </Text>
-
-          <View style={styles.helperLinksRow}>
-            <TouchableOpacity style={styles.linkButton} onPress={() => AkahuAuth.openAkahuAccountSetup()}>
-              <Ionicons name="open-outline" size={16} color="#3b82f6" />
-              <Text style={styles.linkButtonText}>1. Link Banks</Text>
-            </TouchableOpacity>
-
-            <TouchableOpacity style={styles.linkButton} onPress={() => AkahuAuth.openAkahuDeveloperTokens()}>
-              <Ionicons name="key-outline" size={16} color="#3b82f6" />
-              <Text style={styles.linkButtonText}>2. Get Tokens</Text>
-            </TouchableOpacity>
+          <View style={styles.cardHeaderRow}>
+            <View style={{ flex: 1 }}>
+              <Text style={styles.cardTitle}>Akahu Credentials</Text>
+              <Text style={styles.cardDescription}>
+                {isFormLocked
+                  ? "Your Akahu tokens are encrypted and locked. Tap Edit to unlock with biometrics."
+                  : "Get your Personal App tokens from my.akahu.nz/developers and save them."}
+              </Text>
+            </View>
+            {isFormLocked && (
+              <TouchableOpacity style={styles.editButton} onPress={handleUnlockToEdit}>
+                <Ionicons name="lock-open-outline" size={16} color="#3b82f6" />
+                <Text style={styles.editButtonText}>Edit</Text>
+              </TouchableOpacity>
+            )}
           </View>
 
+          {!isFormLocked && (
+            <View style={styles.helperLinksRow}>
+              <TouchableOpacity style={styles.linkButton} onPress={() => AkahuAuth.openAkahuAccountSetup()}>
+                <Ionicons name="open-outline" size={16} color="#3b82f6" />
+                <Text style={styles.linkButtonText}>1. Link Banks</Text>
+              </TouchableOpacity>
+
+              <TouchableOpacity style={styles.linkButton} onPress={() => AkahuAuth.openAkahuDeveloperTokens()}>
+                <Ionicons name="key-outline" size={16} color="#3b82f6" />
+                <Text style={styles.linkButtonText}>2. Get Tokens</Text>
+              </TouchableOpacity>
+            </View>
+          )}
+
           <View style={styles.inputGroup}>
-            <Text style={styles.label}>App ID Token (X-Akahu-Id)</Text>
+            <View style={styles.labelRow}>
+              <Text style={styles.label}>App ID Token (X-Akahu-Id)</Text>
+              {isFormLocked && <Ionicons name="lock-closed" size={14} color="#64748b" />}
+            </View>
             <TextInput
-              style={styles.input}
+              style={[styles.input, isFormLocked && styles.inputLocked]}
               placeholder="app_token_..."
               placeholderTextColor="#94a3b8"
-              value={appToken}
-              onChangeText={setAppToken}
+              value={isFormLocked ? maskToken(activeAppToken, 14) : activeAppToken}
+              onChangeText={setDraftAppToken}
+              editable={!isFormLocked}
               autoCapitalize="none"
               autoCorrect={false}
             />
           </View>
 
           <View style={styles.inputGroup}>
-            <Text style={styles.label}>User Access Token (Bearer)</Text>
+            <View style={styles.labelRow}>
+              <Text style={styles.label}>User Access Token (Bearer)</Text>
+              {isFormLocked && <Ionicons name="lock-closed" size={14} color="#64748b" />}
+            </View>
             <View style={styles.passwordWrapper}>
               <TextInput
-                style={[styles.input, styles.passwordInput]}
+                style={[styles.input, styles.passwordInput, isFormLocked && styles.inputLocked]}
                 placeholder="user_token_..."
                 placeholderTextColor="#94a3b8"
-                value={userToken}
-                onChangeText={setUserToken}
-                secureTextEntry={!showUserToken}
+                value={isFormLocked ? maskToken(activeUserToken, 15) : activeUserToken}
+                onChangeText={setDraftUserToken}
+                editable={!isFormLocked}
+                secureTextEntry={!isFormLocked && !showUserToken}
                 autoCapitalize="none"
                 autoCorrect={false}
               />
-              <TouchableOpacity style={styles.eyeButton} onPress={() => setShowUserToken((v) => !v)}>
-                <Ionicons name={showUserToken ? "eye-off-outline" : "eye-outline"} size={20} color="#64748b" />
-              </TouchableOpacity>
+              {!isFormLocked && (
+                <TouchableOpacity style={styles.eyeButton} onPress={() => setShowUserToken((v) => !v)}>
+                  <Ionicons name={showUserToken ? "eye-off-outline" : "eye-outline"} size={20} color="#64748b" />
+                </TouchableOpacity>
+              )}
             </View>
           </View>
 
@@ -197,27 +277,63 @@ export default function SettingsScreen() {
             </View>
           )}
 
-          <TouchableOpacity
-            style={[styles.saveButton, isSaving && styles.buttonDisabled]}
-            onPress={handleSaveAndVerify}
-            disabled={isSaving}
-          >
-            {isSaving ? (
-              <ActivityIndicator size="small" color="#ffffff" />
-            ) : (
-              <Ionicons name="save-outline" size={20} color="#ffffff" />
-            )}
-            <Text style={styles.saveButtonText}>{isSaving ? "Verifying..." : "Verify & Save Tokens"}</Text>
-          </TouchableOpacity>
-
-          {isConnected && (
-            <TouchableOpacity style={styles.disconnectButton} onPress={handleDisconnect}>
-              <Ionicons name="trash-outline" size={18} color="#dc2626" />
-              <Text style={styles.disconnectButtonText}>Clear Saved Tokens</Text>
+          {!isFormLocked ? (
+            <TouchableOpacity
+              style={[styles.saveButton, saveMutation.isPending && styles.buttonDisabled]}
+              onPress={handleSaveAndBiometricUplift}
+              disabled={saveMutation.isPending}
+            >
+              {saveMutation.isPending ? (
+                <ActivityIndicator size="small" color="#ffffff" />
+              ) : (
+                <Ionicons name="finger-print" size={20} color="#ffffff" />
+              )}
+              <Text style={styles.saveButtonText}>
+                {saveMutation.isPending ? "Verifying..." : "Verify & Lock with Biometrics"}
+              </Text>
+            </TouchableOpacity>
+          ) : (
+            <TouchableOpacity style={styles.lockedBannerButton} onPress={handleUnlockToEdit}>
+              <Ionicons name="lock-closed-outline" size={18} color="#3b82f6" />
+              <Text style={styles.lockedBannerText}>Credentials Locked — Tap to Unlock with Biometrics</Text>
             </TouchableOpacity>
           )}
         </View>
       </ScrollView>
+
+      {/* Warning Modal for Turning Off Biometric Security */}
+      <Modal visible={showWipeModal} transparent animationType="fade" onRequestClose={() => setShowWipeModal(false)}>
+        <View style={styles.modalOverlay}>
+          <View style={styles.modalCard}>
+            <View style={styles.modalWarningIcon}>
+              <Ionicons name="warning-outline" size={32} color="#dc2626" />
+            </View>
+            <Text style={styles.modalTitle}>Turn Off Biometric Security?</Text>
+            <Text style={styles.modalBody}>
+              If you toggle Biometric Security off, your saved Akahu App ID Token and User Access Token will be
+              permanently wiped from device storage.{"\n\n"}You will have to copy and paste both tokens from Akahu all
+              over again.
+            </Text>
+
+            <View style={styles.modalButtonsRow}>
+              <TouchableOpacity style={styles.modalCancelButton} onPress={() => setShowWipeModal(false)}>
+                <Text style={styles.modalCancelText}>Keep On</Text>
+              </TouchableOpacity>
+
+              <TouchableOpacity
+                style={styles.modalConfirmButton}
+                onPress={handleConfirmDisableBiometricsAndWipe}
+                disabled={wipeMutation.isPending}
+              >
+                <Ionicons name="finger-print" size={18} color="#ffffff" />
+                <Text style={styles.modalConfirmText}>
+                  {wipeMutation.isPending ? "Wiping..." : "Verify & Wipe Tokens"}
+                </Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
+      </Modal>
     </KeyboardAvoidingView>
   )
 }
@@ -236,7 +352,7 @@ const styles = StyleSheet.create({
     alignItems: "center",
     borderRadius: 12,
     padding: 16,
-    marginBottom: 20,
+    marginBottom: 16,
     borderWidth: 1,
   },
   statusCardConnected: {
@@ -265,11 +381,46 @@ const styles = StyleSheet.create({
     backgroundColor: "#ffffff",
     borderRadius: 16,
     padding: 20,
+    marginBottom: 16,
     shadowColor: "#000",
     shadowOffset: { width: 0, height: 1 },
     shadowOpacity: 0.05,
     shadowRadius: 3,
     elevation: 2,
+  },
+  biometricRow: {
+    flexDirection: "row",
+    alignItems: "center",
+  },
+  biometricIconBox: {
+    width: 44,
+    height: 44,
+    borderRadius: 12,
+    backgroundColor: "#eff6ff",
+    justifyContent: "center",
+    alignItems: "center",
+    marginRight: 12,
+  },
+  biometricTextCol: {
+    flex: 1,
+    paddingRight: 8,
+  },
+  biometricTitle: {
+    fontSize: 16,
+    fontWeight: "700",
+    color: "#1e293b",
+    marginBottom: 2,
+  },
+  biometricSubtitle: {
+    fontSize: 13,
+    color: "#64748b",
+    lineHeight: 18,
+  },
+  cardHeaderRow: {
+    flexDirection: "row",
+    alignItems: "flex-start",
+    justifyContent: "space-between",
+    marginBottom: 12,
   },
   cardTitle: {
     fontSize: 18,
@@ -281,7 +432,21 @@ const styles = StyleSheet.create({
     fontSize: 14,
     color: "#64748b",
     lineHeight: 20,
-    marginBottom: 16,
+  },
+  editButton: {
+    flexDirection: "row",
+    alignItems: "center",
+    backgroundColor: "#eff6ff",
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    borderRadius: 8,
+    marginLeft: 10,
+  },
+  editButtonText: {
+    color: "#3b82f6",
+    fontSize: 13,
+    fontWeight: "600",
+    marginLeft: 4,
   },
   helperLinksRow: {
     flexDirection: "row",
@@ -307,11 +472,16 @@ const styles = StyleSheet.create({
   inputGroup: {
     marginBottom: 14,
   },
+  labelRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    marginBottom: 6,
+  },
   label: {
     fontSize: 13,
     fontWeight: "600",
     color: "#334155",
-    marginBottom: 6,
   },
   input: {
     backgroundColor: "#f8fafc",
@@ -322,6 +492,11 @@ const styles = StyleSheet.create({
     paddingVertical: 12,
     fontSize: 15,
     color: "#1e293b",
+  },
+  inputLocked: {
+    backgroundColor: "#f1f5f9",
+    borderColor: "#e2e8f0",
+    color: "#64748b",
   },
   passwordWrapper: {
     position: "relative",
@@ -381,15 +556,91 @@ const styles = StyleSheet.create({
     fontWeight: "600",
     marginLeft: 8,
   },
-  disconnectButton: {
+  lockedBannerButton: {
+    backgroundColor: "#eff6ff",
+    borderRadius: 12,
+    paddingVertical: 14,
+    paddingHorizontal: 16,
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "center",
-    paddingVertical: 12,
-    marginTop: 12,
+    marginTop: 6,
+    borderWidth: 1,
+    borderColor: "#bfdbfe",
   },
-  disconnectButtonText: {
-    color: "#dc2626",
+  lockedBannerText: {
+    color: "#2563eb",
+    fontSize: 14,
+    fontWeight: "600",
+    marginLeft: 8,
+  },
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: "rgba(15, 23, 42, 0.55)",
+    justifyContent: "center",
+    alignItems: "center",
+    padding: 24,
+  },
+  modalCard: {
+    backgroundColor: "#ffffff",
+    borderRadius: 18,
+    padding: 24,
+    width: "100%",
+    maxWidth: 400,
+    alignItems: "center",
+  },
+  modalWarningIcon: {
+    width: 60,
+    height: 60,
+    borderRadius: 30,
+    backgroundColor: "#fef2f2",
+    justifyContent: "center",
+    alignItems: "center",
+    marginBottom: 16,
+  },
+  modalTitle: {
+    fontSize: 19,
+    fontWeight: "700",
+    color: "#1e293b",
+    marginBottom: 10,
+    textAlign: "center",
+  },
+  modalBody: {
+    fontSize: 14,
+    color: "#475569",
+    textAlign: "center",
+    lineHeight: 21,
+    marginBottom: 24,
+  },
+  modalButtonsRow: {
+    flexDirection: "row",
+    gap: 12,
+    width: "100%",
+  },
+  modalCancelButton: {
+    flex: 1,
+    backgroundColor: "#f1f5f9",
+    borderRadius: 12,
+    paddingVertical: 13,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  modalCancelText: {
+    color: "#334155",
+    fontSize: 15,
+    fontWeight: "600",
+  },
+  modalConfirmButton: {
+    flex: 1.4,
+    backgroundColor: "#dc2626",
+    borderRadius: 12,
+    paddingVertical: 13,
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  modalConfirmText: {
+    color: "#ffffff",
     fontSize: 14,
     fontWeight: "600",
     marginLeft: 6,

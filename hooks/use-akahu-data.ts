@@ -1,5 +1,7 @@
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query"
 import { akahuClient, type AkahuRawAccount } from "../lib/akahu-client"
+import { AkahuAuth } from "../lib/akahu-auth"
+import { SecurityManager } from "../lib/security"
 import type { BankAccount } from "../lib/store"
 
 function mapAkahuAccountType(rawType?: string): BankAccount["type"] {
@@ -22,6 +24,26 @@ function mapAkahuAccountType(rawType?: string): BankAccount["type"] {
   }
 }
 
+export function useAkahuStoredSettings() {
+  return useQuery({
+    queryKey: ["akahu", "stored-settings"],
+    queryFn: async () => {
+      const stored = await akahuClient.getStoredCredentials()
+      const biometricEnabled = await SecurityManager.isBiometricEnabled()
+      const appToken = stored.appToken || ""
+      const accessToken = stored.accessToken || ""
+      const hasStoredTokens = Boolean(appToken && accessToken)
+
+      return {
+        appToken,
+        accessToken,
+        biometricEnabled,
+        hasStoredTokens,
+      }
+    },
+  })
+}
+
 export function useAkahuConnection() {
   return useQuery({
     queryKey: ["akahu", "connection"],
@@ -39,6 +61,64 @@ export function useAkahuConnection() {
       }
     },
     retry: false,
+  })
+}
+
+export function useSaveAkahuTokens() {
+  const queryClient = useQueryClient()
+
+  return useMutation({
+    mutationFn: async ({ appToken, userToken }: { appToken: string; userToken: string }) => {
+      if (!appToken.trim() || !userToken.trim()) {
+        throw new Error("Please enter both your App ID Token and User Access Token.")
+      }
+
+      const result = await AkahuAuth.connectWithPersonalTokens(appToken, userToken)
+      if (!result.success) {
+        throw new Error(result.error || "Could not verify tokens with Akahu.")
+      }
+
+      const bioResult = await SecurityManager.enableBiometricAuth(
+        "Authenticate with biometrics to lock and store your Akahu tokens",
+      )
+
+      if (!bioResult.success) {
+        await AkahuAuth.disconnect()
+        throw new Error(bioResult.error || "Biometric confirmation is required to store your Akahu tokens.")
+      }
+
+      if (result.user) {
+        await SecurityManager.storeUserProfile(result.user)
+      }
+
+      return result.user
+    },
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({ queryKey: ["akahu"] })
+    },
+  })
+}
+
+export function useWipeAkahuTokens() {
+  const queryClient = useQueryClient()
+
+  return useMutation({
+    mutationFn: async () => {
+      const auth = await SecurityManager.promptBiometric(
+        "Authenticate to turn off biometrics and wipe your Akahu tokens",
+      )
+
+      if (!auth.success) {
+        throw new Error(auth.error || "Biometric verification required to turn off security.")
+      }
+
+      await SecurityManager.clearAllSecureData()
+      await AkahuAuth.disconnect()
+      return true
+    },
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({ queryKey: ["akahu"] })
+    },
   })
 }
 

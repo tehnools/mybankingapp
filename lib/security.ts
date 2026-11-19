@@ -38,6 +38,7 @@ async function deleteItem(key: string): Promise<void> {
 export class SecurityManager {
   private static readonly BIOMETRIC_KEY = "biometric_enabled"
   private static readonly SESSION_KEY = "user_session"
+  private static readonly USER_PROFILE_KEY = "akahu_user_profile"
 
   // Session timeout in milliseconds (15 minutes)
   private static readonly SESSION_TIMEOUT = 15 * 60 * 1000
@@ -71,34 +72,66 @@ export class SecurityManager {
     }
   }
 
-  static async enableBiometricAuth(): Promise<boolean> {
+  /**
+   * Prompts the user for biometric / device credential authentication.
+   */
+  static async promptBiometric(promptMessage: string): Promise<{ success: boolean; error?: string }> {
     try {
+      if (Platform.OS === "web") {
+        return { success: true }
+      }
+
+      const hasHardware = await LocalAuthentication.hasHardwareAsync()
+      const isEnrolled = await LocalAuthentication.isEnrolledAsync()
+
+      if (!hasHardware || !isEnrolled) {
+        return {
+          success: false,
+          error: "Biometrics or device screen lock is not set up on this phone. Please enable Fingerprint/Face Unlock in your phone settings.",
+        }
+      }
+
       const result = await LocalAuthentication.authenticateAsync({
-        promptMessage: "Enable biometric authentication",
+        promptMessage,
         fallbackLabel: "Use passcode",
         cancelLabel: "Cancel",
+        disableDeviceFallback: false,
       })
 
       if (result.success) {
-        await setItem(this.BIOMETRIC_KEY, "true")
-        return true
+        return { success: true }
       }
 
-      return false
+      return {
+        success: false,
+        error: "Biometric authentication was cancelled or failed.",
+      }
     } catch (error) {
-      console.error("Failed to enable biometric auth:", error)
-      return false
+      console.error("Biometric prompt failed:", error)
+      return {
+        success: false,
+        error: error instanceof Error ? error.message : "Biometric error",
+      }
     }
   }
 
-  static async disableBiometricAuth(): Promise<boolean> {
-    try {
+  static async setBiometricEnabled(enabled: boolean): Promise<void> {
+    if (enabled) {
+      await setItem(this.BIOMETRIC_KEY, "true")
+    } else {
       await deleteItem(this.BIOMETRIC_KEY)
-      return true
-    } catch (error) {
-      console.error("Failed to disable biometric auth:", error)
-      return false
     }
+  }
+
+  static async enableBiometricAuth(
+    promptMessage = "Authenticate with biometrics to lock and secure your Akahu tokens",
+  ): Promise<{ success: boolean; error?: string }> {
+    const auth = await this.promptBiometric(promptMessage)
+    if (auth.success) {
+      await this.setBiometricEnabled(true)
+      return { success: true }
+    }
+    return auth
   }
 
   static async isBiometricEnabled(): Promise<boolean> {
@@ -110,33 +143,17 @@ export class SecurityManager {
     }
   }
 
-  static async authenticateWithBiometrics(): Promise<boolean> {
-    try {
-      const isEnabled = await this.isBiometricEnabled()
-      if (!isEnabled) return true
-
-      const result = await LocalAuthentication.authenticateAsync({
-        promptMessage: "Authenticate to access your financial data",
-        fallbackLabel: "Use passcode",
-        cancelLabel: "Cancel",
-      })
-
-      return result.success
-    } catch (error) {
-      console.error("Biometric authentication failed:", error)
-      return false
-    }
+  static async storeUserProfile(user: Record<string, any>): Promise<void> {
+    await setItem(this.USER_PROFILE_KEY, JSON.stringify(user))
   }
 
-  static async encryptData(data: string): Promise<string> {
+  static async getUserProfile(): Promise<Record<string, any> | null> {
+    const raw = await getItem(this.USER_PROFILE_KEY)
+    if (!raw) return null
     try {
-      const digest = await Crypto.digestStringAsync(Crypto.CryptoDigestAlgorithm.SHA256, data, {
-        encoding: Crypto.CryptoEncoding.HEX,
-      })
-      return digest
-    } catch (error) {
-      console.error("Failed to encrypt data:", error)
-      return data
+      return JSON.parse(raw)
+    } catch {
+      return null
     }
   }
 
@@ -169,70 +186,11 @@ export class SecurityManager {
     }
   }
 
-  static async createSession(): Promise<string> {
-    try {
-      const sessionId = Crypto.randomUUID()
-      const sessionData = {
-        id: sessionId,
-        createdAt: Date.now(),
-        lastActivity: Date.now(),
-      }
-
-      await this.storeSecureData(this.SESSION_KEY, JSON.stringify(sessionData))
-      return sessionId
-    } catch (error) {
-      console.error("Failed to create session:", error)
-      throw error
-    }
-  }
-
-  static async validateSession(): Promise<boolean> {
-    try {
-      const sessionData = await this.getSecureData(this.SESSION_KEY)
-      if (!sessionData) return false
-
-      const session = JSON.parse(sessionData)
-      const now = Date.now()
-      const timeSinceLastActivity = now - session.lastActivity
-
-      if (timeSinceLastActivity > this.SESSION_TIMEOUT) {
-        await this.clearSession()
-        return false
-      }
-
-      await this.updateLastActivity()
-      return true
-    } catch (error) {
-      console.error("Failed to validate session:", error)
-      return false
-    }
-  }
-
-  static async updateLastActivity(): Promise<void> {
-    try {
-      const sessionData = await this.getSecureData(this.SESSION_KEY)
-      if (sessionData) {
-        const session = JSON.parse(sessionData)
-        session.lastActivity = Date.now()
-        await this.storeSecureData(this.SESSION_KEY, JSON.stringify(session))
-      }
-    } catch (error) {
-      console.error("Failed to update last activity:", error)
-    }
-  }
-
-  static async clearSession(): Promise<void> {
-    try {
-      await this.deleteSecureData(this.SESSION_KEY)
-    } catch (error) {
-      console.error("Failed to clear session:", error)
-    }
-  }
-
   static async clearAllSecureData(): Promise<void> {
     try {
       await this.deleteSecureData("akahu_app_token")
       await this.deleteSecureData("akahu_access_token")
+      await this.deleteSecureData(this.USER_PROFILE_KEY)
       await this.deleteSecureData(this.SESSION_KEY)
       await this.deleteSecureData(this.BIOMETRIC_KEY)
       await this.deleteSecureData("user_preferences")
