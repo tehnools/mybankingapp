@@ -63,7 +63,9 @@ export default function SettingsScreen() {
     (saveMutation.error instanceof Error && saveMutation.error.message) ||
     (unlockMutation.error instanceof Error && unlockMutation.error.message) ||
     (wipeMutation.error instanceof Error && wipeMutation.error.message) ||
-    null
+    (storedSettings?.wipedDueToMissingBiometrics
+      ? "Device biometrics were removed from your phone settings. Saved Akahu tokens were automatically wiped for security."
+      : null)
 
   const activeSuccess = saveMutation.isSuccess
     ? `Tokens verified & locked with biometrics${saveMutation.data?.email ? ` (${saveMutation.data.email})` : ""}!`

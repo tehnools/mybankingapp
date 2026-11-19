@@ -26,9 +26,26 @@ function mapAkahuAccountType(rawType?: string): BankAccount["type"] {
 }
 
 export function useAkahuStoredSettings() {
+  const resetForm = useSettingsFormStore((s) => s.resetForm)
+  const setConnected = useAppStore((s) => s.setConnected)
+
   return useQuery({
     queryKey: ["akahu", "stored-settings"],
     queryFn: async () => {
+      const integrity = await SecurityManager.verifyDeviceBiometricIntegrity()
+      if (integrity.wipedDueToMissingBiometrics) {
+        await akahuClient.clearCredentials()
+        resetForm()
+        setConnected(false)
+        return {
+          appToken: "",
+          accessToken: "",
+          biometricEnabled: false,
+          hasStoredTokens: false,
+          wipedDueToMissingBiometrics: true,
+        }
+      }
+
       const stored = await akahuClient.getStoredCredentials()
       const biometricEnabled = await SecurityManager.isBiometricEnabled()
       const appToken = stored.appToken || ""
@@ -40,6 +57,7 @@ export function useAkahuStoredSettings() {
         accessToken,
         biometricEnabled,
         hasStoredTokens,
+        wipedDueToMissingBiometrics: false,
       }
     },
   })

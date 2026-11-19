@@ -1,7 +1,6 @@
 import { Platform } from "react-native"
 import * as SecureStore from "expo-secure-store"
 import * as LocalAuthentication from "expo-local-authentication"
-import * as Crypto from "expo-crypto"
 import * as Device from "expo-device"
 
 // Cross-platform secure storage helper (uses SecureStore on iOS/Android, localStorage on web preview)
@@ -87,7 +86,8 @@ export class SecurityManager {
       if (!hasHardware || !isEnrolled) {
         return {
           success: false,
-          error: "Biometrics or device screen lock is not set up on this phone. Please enable Fingerprint/Face Unlock in your phone settings.",
+          error:
+            "Biometrics or device screen lock is not set up on this phone. Please enable Fingerprint/Face Unlock in your phone settings.",
         }
       }
 
@@ -140,6 +140,43 @@ export class SecurityManager {
       return enabled === "true"
     } catch (error) {
       return false
+    }
+  }
+
+  /**
+   * Ensures that if tokens or biometric security were stored, the phone still has
+   * biometrics enrolled at the OS level. If the user removed their fingerprints / Face ID
+   * from phone settings, all stored Akahu tokens are automatically wiped.
+   */
+  static async verifyDeviceBiometricIntegrity(): Promise<{
+    intact: boolean
+    wipedDueToMissingBiometrics: boolean
+  }> {
+    try {
+      if (Platform.OS === "web") {
+        return { intact: true, wipedDueToMissingBiometrics: false }
+      }
+
+      const bioEnabled = await this.isBiometricEnabled()
+      const hasAppToken = Boolean(await getItem("akahu_app_token"))
+      const hasAccessToken = Boolean(await getItem("akahu_access_token"))
+
+      if (!bioEnabled && !hasAppToken && !hasAccessToken) {
+        return { intact: true, wipedDueToMissingBiometrics: false }
+      }
+
+      const hasHardware = await LocalAuthentication.hasHardwareAsync()
+      const isEnrolled = await LocalAuthentication.isEnrolledAsync()
+
+      if (!hasHardware || !isEnrolled) {
+        await this.clearAllSecureData()
+        return { intact: false, wipedDueToMissingBiometrics: true }
+      }
+
+      return { intact: true, wipedDueToMissingBiometrics: false }
+    } catch (error) {
+      console.error("Failed to verify biometric integrity:", error)
+      return { intact: true, wipedDueToMissingBiometrics: false }
     }
   }
 
