@@ -1,5 +1,5 @@
 import React from "react"
-import { AppState, View, StyleSheet, TouchableOpacity, ActivityIndicator } from "react-native"
+import { AppState, View, StyleSheet, TouchableOpacity, ActivityIndicator, type ColorValue } from "react-native"
 import { Tabs } from "expo-router"
 import { QueryClient, QueryClientProvider, focusManager } from "@tanstack/react-query"
 import { SafeAreaProvider } from "react-native-safe-area-context"
@@ -114,21 +114,27 @@ const RootLayout = (): React.JSX.Element => {
               name="index"
               options={{
                 title: "Home",
-                tabBarIcon: ({ color, size }) => <Ionicons name="home-outline" size={size} color={color} />,
+                tabBarIcon: ({ color, size }: { color: ColorValue; size: number }): React.JSX.Element => (
+                  <Ionicons name="home-outline" size={size} color={color ?? undefined} />
+                ),
               }}
             />
             <Tabs.Screen
               name="accounts"
               options={{
                 title: "Accounts",
-                tabBarIcon: ({ color, size }) => <Ionicons name="card-outline" size={size} color={color} />,
+                tabBarIcon: ({ color, size }: { color: ColorValue; size: number }): React.JSX.Element => (
+                  <Ionicons name="card-outline" size={size} color={color ?? undefined} />
+                ),
               }}
             />
             <Tabs.Screen
               name="settings"
               options={{
                 title: "Settings",
-                tabBarIcon: ({ color, size }) => <Ionicons name="settings-outline" size={size} color={color} />,
+                tabBarIcon: ({ color, size }: { color: ColorValue; size: number }): React.JSX.Element => (
+                  <Ionicons name="settings-outline" size={size} color={color ?? undefined} />
+                ),
               }}
             />
           </Tabs>

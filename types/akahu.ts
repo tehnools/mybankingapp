@@ -18,6 +18,11 @@ export interface AkahuConnectionStatus {
   user: AkahuUser | null
 }
 
+export interface AkahuClipboardPasteResult {
+  pastedAppToken: string | null
+  pastedUserToken: string | null
+}
+
 export interface AkahuRawAccount {
   _id: string
   _connection: string

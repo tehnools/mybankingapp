@@ -17,6 +17,8 @@ import { AkahuAuth } from "../lib/akahu-auth"
 import {
   useAkahuConnection,
   useAkahuStoredSettings,
+  useAutoPasteAkahuClipboard,
+  usePasteAkahuClipboard,
   useSaveAkahuTokens,
   useUnlockCredentialsForm,
   useWipeAkahuTokens,
@@ -36,6 +38,7 @@ const SettingsScreen = (): React.JSX.Element => {
   const saveMutation = useSaveAkahuTokens()
   const unlockMutation = useUnlockCredentialsForm()
   const wipeMutation = useWipeAkahuTokens()
+  const pasteMutation = usePasteAkahuClipboard()
 
   const {
     draftAppToken,
@@ -55,6 +58,9 @@ const SettingsScreen = (): React.JSX.Element => {
   const biometricEnabled = Boolean(storedSettings?.biometricEnabled)
   const isConnected = Boolean(connectionStatus?.connected)
 
+  // Automatically check clipboard on focus when form is unlocked and auto-paste app_token_ / user_token_
+  const autoPasteQuery = useAutoPasteAkahuClipboard(!isFormLocked)
+
   const activeAppToken = isFormLocked ? storedSettings?.appToken || "" : draftAppToken
   const activeUserToken = isFormLocked ? storedSettings?.accessToken || "" : draftUserToken
 
@@ -67,13 +73,26 @@ const SettingsScreen = (): React.JSX.Element => {
       ? "Device biometrics were removed from your phone settings. Saved Akahu tokens were automatically wiped for security."
       : null)
 
+  const lastAutoPastedApp =
+    pasteMutation.data?.pastedAppToken || autoPasteQuery.data?.pastedAppToken || null
+  const lastAutoPastedUser =
+    pasteMutation.data?.pastedUserToken || autoPasteQuery.data?.pastedUserToken || null
+
   const activeSuccess = saveMutation.isSuccess
     ? `Tokens verified & locked with biometrics${saveMutation.data?.email ? ` (${saveMutation.data.email})` : ""}!`
     : unlockMutation.isSuccess && isUnlockedForEditing
       ? "Form unlocked for editing."
       : wipeMutation.isSuccess && !hasStoredTokens
         ? "Biometrics turned off and all Akahu tokens have been wiped from storage."
-        : null
+        : !isFormLocked && (lastAutoPastedApp || lastAutoPastedUser)
+          ? `Auto-pasted ${
+              lastAutoPastedApp && lastAutoPastedUser
+                ? "App ID Token & User Access Token"
+                : lastAutoPastedApp
+                  ? "App ID Token"
+                  : "User Access Token"
+            } from clipboard!`
+          : null
 
   const clearMutationStates = () => {
     saveMutation.reset()
@@ -178,6 +197,11 @@ const SettingsScreen = (): React.JSX.Element => {
               <TouchableOpacity style={styles.linkButton} onPress={() => AkahuAuth.openAkahuDeveloperTokens()}>
                 <Ionicons name="key-outline" size={16} color="#3b82f6" />
                 <Text style={styles.linkButtonText}>2. Get Tokens</Text>
+              </TouchableOpacity>
+
+              <TouchableOpacity style={styles.linkButton} onPress={() => pasteMutation.mutate()}>
+                <Ionicons name="clipboard-outline" size={16} color="#3b82f6" />
+                <Text style={styles.linkButtonText}>Paste</Text>
               </TouchableOpacity>
             </View>
           )}

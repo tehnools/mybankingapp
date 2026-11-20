@@ -1,3 +1,4 @@
+import * as Clipboard from "expo-clipboard"
 import {
   useQuery,
   useMutation,
@@ -10,12 +11,64 @@ import { AkahuAuth } from "../lib/akahu-auth"
 import { SecurityManager } from "../lib/security"
 import { useAppStore, useSettingsFormStore } from "../lib/store"
 import type {
+  AkahuClipboardPasteResult,
   AkahuConnectionStatus,
   AkahuRawAccount,
   AkahuStoredSettings,
   AkahuUser,
   BankAccount,
 } from "../types"
+
+const extractAndPasteTokensFromClipboard = async (): Promise<AkahuClipboardPasteResult> => {
+  try {
+    // Brief delay so Android 12+ window focus is active when returning from browser
+    await new Promise<void>((resolve) => setTimeout(resolve, 200))
+    const text = (await Clipboard.getStringAsync()).trim()
+    if (!text) {
+      return { pastedAppToken: null, pastedUserToken: null }
+    }
+
+    const appTokenMatch = text.match(/app_token_[A-Za-z0-9]+/)
+    const userTokenMatch = text.match(/user_token_[A-Za-z0-9]+/)
+
+    const { draftAppToken, draftUserToken, setDraftAppToken, setDraftUserToken } = useSettingsFormStore.getState()
+
+    let pastedAppToken: string | null = null
+    let pastedUserToken: string | null = null
+
+    if (appTokenMatch && appTokenMatch[0] !== draftAppToken) {
+      pastedAppToken = appTokenMatch[0]
+      setDraftAppToken(pastedAppToken)
+    }
+
+    if (userTokenMatch && userTokenMatch[0] !== draftUserToken) {
+      pastedUserToken = userTokenMatch[0]
+      setDraftUserToken(pastedUserToken)
+    }
+
+    return { pastedAppToken, pastedUserToken }
+  } catch {
+    return { pastedAppToken: null, pastedUserToken: null }
+  }
+}
+
+export const useAutoPasteAkahuClipboard = (enabled: boolean): UseQueryResult<AkahuClipboardPasteResult, Error> => {
+  return useQuery<AkahuClipboardPasteResult, Error>({
+    queryKey: ["akahu", "clipboard-auto-paste", enabled],
+    queryFn: extractAndPasteTokensFromClipboard,
+    enabled,
+    refetchOnWindowFocus: "always",
+    staleTime: 0,
+    gcTime: 0,
+    retry: false,
+  })
+}
+
+export const usePasteAkahuClipboard = (): UseMutationResult<AkahuClipboardPasteResult, Error, void> => {
+  return useMutation<AkahuClipboardPasteResult, Error, void>({
+    mutationFn: extractAndPasteTokensFromClipboard,
+  })
+}
 
 const mapAkahuAccountType = (rawType?: string): BankAccount["type"] => {
   switch (rawType?.toUpperCase()) {
@@ -237,19 +290,17 @@ export const useAkahuAccounts = (): UseQueryResult<BankAccount[], Error> => {
       const response = await akahuClient.getAccounts()
 
       const accounts: BankAccount[] =
-        response.items?.map(
-          (account: AkahuRawAccount): BankAccount => ({
-            id: account._id,
-            name: account.name,
-            bank: account.connection?.name || "NZ Bank",
-            accountNumber: account.formatted_account || "••••",
-            balance: account.balance?.current ?? 0,
-            availableBalance: account.balance?.available,
-            type: mapAkahuAccountType(account.type),
-            status: account.status,
-            lastRefreshed: account.refreshed?.balance || account.refreshed?.transactions,
-          }),
-        ) || []
+        response.items?.map((account: AkahuRawAccount): BankAccount => ({
+          id: account._id,
+          name: account.name,
+          bank: account.connection?.name || "NZ Bank",
+          accountNumber: account.formatted_account || "••••",
+          balance: account.balance?.current ?? 0,
+          availableBalance: account.balance?.available,
+          type: mapAkahuAccountType(account.type),
+          status: account.status,
+          lastRefreshed: account.refreshed?.balance || account.refreshed?.transactions,
+        })) || []
 
       return accounts
     },
