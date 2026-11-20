@@ -29,6 +29,7 @@ import {
   useWipeAkahuTokens,
 } from "../hooks/use-akahu-data"
 import { useSettingsFormStore } from "../lib/store"
+import { useAppTheme } from "../lib/theme"
 
 const maskToken = (token: string, prefixLen = 12): string => {
   if (!token) return ""
@@ -37,6 +38,7 @@ const maskToken = (token: string, prefixLen = 12): string => {
 }
 
 const SettingsScreen = (): React.JSX.Element => {
+  const { colors } = useAppTheme()
   const { data: connectionStatus, isLoading: isCheckingConnection } = useAkahuConnection()
   const { data: storedSettings } = useAkahuStoredSettings()
 
@@ -187,17 +189,27 @@ const SettingsScreen = (): React.JSX.Element => {
           : "Enter your 6-digit PIN to unlock and edit your Akahu tokens."
 
   return (
-    <KeyboardAvoidingView style={styles.container} behavior={Platform.OS === "ios" ? "padding" : undefined}>
+    <KeyboardAvoidingView
+      style={[styles.container, { backgroundColor: colors.background }]}
+      behavior={Platform.OS === "ios" ? "padding" : undefined}
+    >
       <ScrollView contentContainerStyle={styles.scrollContent} keyboardShouldPersistTaps="handled">
         {/* Connection Status Card */}
-        <View style={[styles.statusCard, isConnected ? styles.statusCardConnected : styles.statusCardDisconnected]}>
+        <View
+          style={[
+            styles.statusCard,
+            isConnected
+              ? { backgroundColor: colors.positiveSoft, borderColor: colors.positive }
+              : { backgroundColor: colors.card, borderColor: colors.border },
+          ]}
+        >
           <Ionicons
             name={isConnected ? "shield-checkmark" : "information-circle"}
             size={24}
-            color={isConnected ? "#059669" : "#64748b"}
+            color={isConnected ? colors.positive : colors.subtext}
           />
           <View style={styles.statusTextWrapper}>
-            <Text style={styles.statusTitle}>
+            <Text style={[styles.statusTitle, { color: colors.text }]}>
               {isCheckingConnection
                 ? "Checking connection..."
                 : isConnected
@@ -206,7 +218,7 @@ const SettingsScreen = (): React.JSX.Element => {
                     : "Akahu Connected (Set PIN to Lock)"
                   : "Not Connected"}
             </Text>
-            <Text style={styles.statusSubtitle}>
+            <Text style={[styles.statusSubtitle, { color: colors.subtext }]}>
               {isConnected
                 ? connectionStatus?.user?.email || `User ID: ${connectionStatus?.user?._id}`
                 : "Enter your Akahu Personal App tokens below"}
@@ -215,14 +227,14 @@ const SettingsScreen = (): React.JSX.Element => {
         </View>
 
         {/* Security & Biometrics Card */}
-        <View style={styles.card}>
+        <View style={[styles.card, { backgroundColor: colors.card, borderColor: colors.border }]}>
           <View style={styles.securityHeaderRow}>
-            <View style={styles.biometricIconBox}>
-              <Ionicons name="keypad-outline" size={20} color="#059669" />
+            <View style={[styles.biometricIconBox, { backgroundColor: colors.positiveSoft }]}>
+              <Ionicons name="keypad-outline" size={20} color={colors.positive} />
             </View>
             <View style={styles.biometricTextCol}>
-              <Text style={styles.biometricTitle}>6-Digit App PIN (Mandatory)</Text>
-              <Text style={styles.biometricSubtitle}>
+              <Text style={[styles.biometricTitle, { color: colors.text }]}>6-Digit App PIN (Mandatory)</Text>
+              <Text style={[styles.biometricSubtitle, { color: colors.subtext }]}>
                 {hasPin
                   ? "Active — always available as your backup unlock if biometrics fail or are removed."
                   : "You will create a 6-digit PIN when you verify & save your tokens."}
@@ -230,15 +242,15 @@ const SettingsScreen = (): React.JSX.Element => {
             </View>
           </View>
 
-          <View style={styles.divider} />
+          <View style={[styles.divider, { backgroundColor: colors.border }]} />
 
           <View style={styles.biometricRow}>
-            <View style={[styles.biometricIconBox, { backgroundColor: "#eff6ff" }]}>
-              <Ionicons name="finger-print" size={22} color="#3b82f6" />
+            <View style={[styles.biometricIconBox, { backgroundColor: colors.primarySoft }]}>
+              <Ionicons name="finger-print" size={22} color={colors.primary} />
             </View>
             <View style={styles.biometricTextCol}>
-              <Text style={styles.biometricTitle}>Biometric Unlock</Text>
-              <Text style={styles.biometricSubtitle}>
+              <Text style={[styles.biometricTitle, { color: colors.text }]}>Biometric Unlock</Text>
+              <Text style={[styles.biometricSubtitle, { color: colors.subtext }]}>
                 {biometricEnabled
                   ? "Enabled — prompts first on app launch, with your 6-digit PIN as backup."
                   : hasPin
@@ -250,59 +262,78 @@ const SettingsScreen = (): React.JSX.Element => {
               value={biometricEnabled}
               onValueChange={handleBiometricToggle}
               disabled={!hasPin || !hasStoredTokens || toggleBioMutation.isPending}
-              trackColor={{ false: "#cbd5e1", true: "#3b82f6" }}
+              trackColor={{ false: colors.border, true: colors.primary }}
               thumbColor="#ffffff"
             />
           </View>
         </View>
 
         {/* Akahu Token Form */}
-        <View style={styles.card}>
+        <View style={[styles.card, { backgroundColor: colors.card, borderColor: colors.border }]}>
           <View style={styles.cardHeaderRow}>
             <View style={{ flex: 1 }}>
-              <Text style={styles.cardTitle}>Akahu Credentials</Text>
-              <Text style={styles.cardDescription}>
+              <Text style={[styles.cardTitle, { color: colors.text }]}>Akahu Credentials</Text>
+              <Text style={[styles.cardDescription, { color: colors.subtext }]}>
                 {isFormLocked
                   ? "Your Akahu tokens are encrypted and locked. Tap Edit to unlock with biometrics or PIN."
                   : "Get your Personal App tokens from my.akahu.nz/developers and save them."}
               </Text>
             </View>
             {isFormLocked && (
-              <TouchableOpacity style={styles.editButton} onPress={handleUnlockToEdit}>
-                <Ionicons name="lock-open-outline" size={16} color="#3b82f6" />
-                <Text style={styles.editButtonText}>Edit</Text>
+              <TouchableOpacity
+                style={[styles.editButton, { backgroundColor: colors.primarySoft }]}
+                onPress={handleUnlockToEdit}
+              >
+                <Ionicons name="lock-open-outline" size={16} color={colors.primary} />
+                <Text style={[styles.editButtonText, { color: colors.primary }]}>Edit</Text>
               </TouchableOpacity>
             )}
           </View>
 
           {!isFormLocked && (
             <View style={styles.helperLinksRow}>
-              <TouchableOpacity style={styles.linkButton} onPress={() => AkahuAuth.openAkahuAccountSetup()}>
-                <Ionicons name="open-outline" size={16} color="#3b82f6" />
-                <Text style={styles.linkButtonText}>1. Link Banks</Text>
+              <TouchableOpacity
+                style={[styles.linkButton, { backgroundColor: colors.primarySoft }]}
+                onPress={() => AkahuAuth.openAkahuAccountSetup()}
+              >
+                <Ionicons name="open-outline" size={16} color={colors.primary} />
+                <Text style={[styles.linkButtonText, { color: colors.primary }]}>1. Link Banks</Text>
               </TouchableOpacity>
 
-              <TouchableOpacity style={styles.linkButton} onPress={() => AkahuAuth.openAkahuDeveloperTokens()}>
-                <Ionicons name="key-outline" size={16} color="#3b82f6" />
-                <Text style={styles.linkButtonText}>2. Get Tokens</Text>
+              <TouchableOpacity
+                style={[styles.linkButton, { backgroundColor: colors.primarySoft }]}
+                onPress={() => AkahuAuth.openAkahuDeveloperTokens()}
+              >
+                <Ionicons name="key-outline" size={16} color={colors.primary} />
+                <Text style={[styles.linkButtonText, { color: colors.primary }]}>2. Get Tokens</Text>
               </TouchableOpacity>
 
-              <TouchableOpacity style={styles.linkButton} onPress={() => pasteMutation.mutate()}>
-                <Ionicons name="clipboard-outline" size={16} color="#3b82f6" />
-                <Text style={styles.linkButtonText}>Paste</Text>
+              <TouchableOpacity
+                style={[styles.linkButton, { backgroundColor: colors.primarySoft }]}
+                onPress={() => pasteMutation.mutate()}
+              >
+                <Ionicons name="clipboard-outline" size={16} color={colors.primary} />
+                <Text style={[styles.linkButtonText, { color: colors.primary }]}>Paste</Text>
               </TouchableOpacity>
             </View>
           )}
 
           <View style={styles.inputGroup}>
             <View style={styles.labelRow}>
-              <Text style={styles.label}>App ID Token (X-Akahu-Id)</Text>
-              {isFormLocked && <Ionicons name="lock-closed" size={14} color="#64748b" />}
+              <Text style={[styles.label, { color: colors.text }]}>App ID Token (X-Akahu-Id)</Text>
+              {isFormLocked && <Ionicons name="lock-closed" size={14} color={colors.subtext} />}
             </View>
             <TextInput
-              style={[styles.input, isFormLocked && styles.inputLocked]}
+              style={[
+                styles.input,
+                {
+                  backgroundColor: colors.background,
+                  borderColor: colors.border,
+                  color: isFormLocked ? colors.subtext : colors.text,
+                },
+              ]}
               placeholder="app_token_..."
-              placeholderTextColor="#94a3b8"
+              placeholderTextColor={colors.muted}
               value={isFormLocked ? maskToken(activeAppToken, 14) : activeAppToken}
               onChangeText={setDraftAppToken}
               editable={!isFormLocked}
@@ -313,14 +344,22 @@ const SettingsScreen = (): React.JSX.Element => {
 
           <View style={styles.inputGroup}>
             <View style={styles.labelRow}>
-              <Text style={styles.label}>User Access Token (Bearer)</Text>
-              {isFormLocked && <Ionicons name="lock-closed" size={14} color="#64748b" />}
+              <Text style={[styles.label, { color: colors.text }]}>User Access Token (Bearer)</Text>
+              {isFormLocked && <Ionicons name="lock-closed" size={14} color={colors.subtext} />}
             </View>
             <View style={styles.passwordWrapper}>
               <TextInput
-                style={[styles.input, styles.passwordInput, isFormLocked && styles.inputLocked]}
+                style={[
+                  styles.input,
+                  styles.passwordInput,
+                  {
+                    backgroundColor: colors.background,
+                    borderColor: colors.border,
+                    color: isFormLocked ? colors.subtext : colors.text,
+                  },
+                ]}
                 placeholder="user_token_..."
-                placeholderTextColor="#94a3b8"
+                placeholderTextColor={colors.muted}
                 value={isFormLocked ? maskToken(activeUserToken, 15) : activeUserToken}
                 onChangeText={setDraftUserToken}
                 editable={!isFormLocked}
@@ -330,29 +369,43 @@ const SettingsScreen = (): React.JSX.Element => {
               />
               {!isFormLocked && (
                 <TouchableOpacity style={styles.eyeButton} onPress={toggleShowUserToken}>
-                  <Ionicons name={showUserToken ? "eye-off-outline" : "eye-outline"} size={20} color="#64748b" />
+                  <Ionicons name={showUserToken ? "eye-off-outline" : "eye-outline"} size={20} color={colors.subtext} />
                 </TouchableOpacity>
               )}
             </View>
           </View>
 
           {activeError && (
-            <View style={[styles.messageBanner, styles.errorBanner]}>
-              <Ionicons name="alert-circle" size={18} color="#dc2626" />
-              <Text style={[styles.messageText, styles.errorText]}>{activeError}</Text>
+            <View
+              style={[
+                styles.messageBanner,
+                { backgroundColor: colors.negativeSoft, borderColor: colors.negative },
+              ]}
+            >
+              <Ionicons name="alert-circle" size={18} color={colors.negative} />
+              <Text style={[styles.messageText, { color: colors.negative }]}>{activeError}</Text>
             </View>
           )}
 
           {!activeError && activeSuccess && (
-            <View style={[styles.messageBanner, styles.successBanner]}>
-              <Ionicons name="checkmark-circle" size={18} color="#059669" />
-              <Text style={[styles.messageText, styles.successText]}>{activeSuccess}</Text>
+            <View
+              style={[
+                styles.messageBanner,
+                { backgroundColor: colors.positiveSoft, borderColor: colors.positive },
+              ]}
+            >
+              <Ionicons name="checkmark-circle" size={18} color={colors.positive} />
+              <Text style={[styles.messageText, { color: colors.positive }]}>{activeSuccess}</Text>
             </View>
           )}
 
           {!isFormLocked ? (
             <TouchableOpacity
-              style={[styles.saveButton, saveMutation.isPending && styles.buttonDisabled]}
+              style={[
+                styles.saveButton,
+                { backgroundColor: colors.primary },
+                saveMutation.isPending && styles.buttonDisabled,
+              ]}
               onPress={handleSave}
               disabled={saveMutation.isPending}
             >
@@ -370,16 +423,26 @@ const SettingsScreen = (): React.JSX.Element => {
               </Text>
             </TouchableOpacity>
           ) : (
-            <TouchableOpacity style={styles.lockedBannerButton} onPress={handleUnlockToEdit}>
-              <Ionicons name="lock-closed-outline" size={18} color="#3b82f6" />
-              <Text style={styles.lockedBannerText}>Credentials Locked — Tap to Unlock</Text>
+            <TouchableOpacity
+              style={[
+                styles.lockedBannerButton,
+                { backgroundColor: colors.primarySoft, borderColor: colors.primary },
+              ]}
+              onPress={handleUnlockToEdit}
+            >
+              <Ionicons name="lock-closed-outline" size={18} color={colors.primary} />
+              <Text style={[styles.lockedBannerText, { color: colors.primary }]}>
+                Credentials Locked — Tap to Unlock
+              </Text>
             </TouchableOpacity>
           )}
 
           {hasStoredTokens && (
             <TouchableOpacity style={styles.wipeLinkButton} onPress={() => setShowWipeModal(true)}>
-              <Ionicons name="trash-outline" size={16} color="#dc2626" />
-              <Text style={styles.wipeLinkText}>Clear Saved Tokens & Reset PIN</Text>
+              <Ionicons name="trash-outline" size={16} color={colors.negative} />
+              <Text style={[styles.wipeLinkText, { color: colors.negative }]}>
+                Clear Saved Tokens & Reset PIN
+              </Text>
             </TouchableOpacity>
           )}
         </View>
@@ -388,7 +451,7 @@ const SettingsScreen = (): React.JSX.Element => {
       {/* Mandatory 6-Digit PIN Setup / Verification Modal */}
       <Modal visible={pinFlowMode !== "closed"} transparent animationType="fade" onRequestClose={closePinFlow}>
         <View style={styles.modalOverlay}>
-          <View style={styles.modalCard}>
+          <View style={[styles.modalCard, { backgroundColor: colors.card }]}>
             <PinPad
               title={pinModalTitle}
               subtitle={pinModalSubtitle}
@@ -410,23 +473,26 @@ const SettingsScreen = (): React.JSX.Element => {
       {/* Explicit Wipe Confirmation Modal */}
       <Modal visible={showWipeModal} transparent animationType="fade" onRequestClose={() => setShowWipeModal(false)}>
         <View style={styles.modalOverlay}>
-          <View style={styles.modalCard}>
-            <View style={styles.modalWarningIcon}>
-              <Ionicons name="warning-outline" size={32} color="#dc2626" />
+          <View style={[styles.modalCard, { backgroundColor: colors.card }]}>
+            <View style={[styles.modalWarningIcon, { backgroundColor: colors.negativeSoft }]}>
+              <Ionicons name="warning-outline" size={32} color={colors.negative} />
             </View>
-            <Text style={styles.modalTitle}>Wipe All Saved Tokens & PIN?</Text>
-            <Text style={styles.modalBody}>
+            <Text style={[styles.modalTitle, { color: colors.text }]}>Wipe All Saved Tokens & PIN?</Text>
+            <Text style={[styles.modalBody, { color: colors.subtext }]}>
               This will permanently remove your Akahu App ID Token, User Access Token, and 6-digit PIN from device
               storage.{"\n\n"}You will have to copy and paste both tokens from Akahu all over again.
             </Text>
 
             <View style={styles.modalButtonsRow}>
-              <TouchableOpacity style={styles.modalCancelButton} onPress={() => setShowWipeModal(false)}>
-                <Text style={styles.modalCancelText}>Cancel</Text>
+              <TouchableOpacity
+                style={[styles.modalCancelButton, { backgroundColor: colors.background }]}
+                onPress={() => setShowWipeModal(false)}
+              >
+                <Text style={[styles.modalCancelText, { color: colors.text }]}>Cancel</Text>
               </TouchableOpacity>
 
               <TouchableOpacity
-                style={styles.modalConfirmButton}
+                style={[styles.modalConfirmButton, { backgroundColor: colors.negative }]}
                 onPress={(): void => {
                   clearMutationStates()
                   wipeMutation.mutate()
@@ -449,7 +515,6 @@ export default SettingsScreen
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: "#f8fafc",
   },
   scrollContent: {
     padding: 20,
@@ -463,14 +528,6 @@ const styles = StyleSheet.create({
     marginBottom: 16,
     borderWidth: 1,
   },
-  statusCardConnected: {
-    backgroundColor: "#f0fdf4",
-    borderColor: "#bbf7d0",
-  },
-  statusCardDisconnected: {
-    backgroundColor: "#ffffff",
-    borderColor: "#e2e8f0",
-  },
   statusTextWrapper: {
     marginLeft: 12,
     flex: 1,
@@ -478,18 +535,16 @@ const styles = StyleSheet.create({
   statusTitle: {
     fontSize: 16,
     fontWeight: "600",
-    color: "#1e293b",
   },
   statusSubtitle: {
     fontSize: 13,
-    color: "#64748b",
     marginTop: 2,
   },
   card: {
-    backgroundColor: "#ffffff",
     borderRadius: 16,
     padding: 20,
     marginBottom: 16,
+    borderWidth: 1,
     shadowColor: "#000",
     shadowOffset: { width: 0, height: 1 },
     shadowOpacity: 0.05,
@@ -502,7 +557,6 @@ const styles = StyleSheet.create({
   },
   divider: {
     height: 1,
-    backgroundColor: "#f1f5f9",
     marginVertical: 14,
   },
   biometricRow: {
@@ -513,7 +567,6 @@ const styles = StyleSheet.create({
     width: 42,
     height: 42,
     borderRadius: 12,
-    backgroundColor: "#f0fdf4",
     justifyContent: "center",
     alignItems: "center",
     marginRight: 12,
@@ -525,12 +578,10 @@ const styles = StyleSheet.create({
   biometricTitle: {
     fontSize: 15,
     fontWeight: "700",
-    color: "#1e293b",
     marginBottom: 2,
   },
   biometricSubtitle: {
     fontSize: 13,
-    color: "#64748b",
     lineHeight: 18,
   },
   cardHeaderRow: {
@@ -542,25 +593,21 @@ const styles = StyleSheet.create({
   cardTitle: {
     fontSize: 18,
     fontWeight: "700",
-    color: "#1e293b",
     marginBottom: 6,
   },
   cardDescription: {
     fontSize: 14,
-    color: "#64748b",
     lineHeight: 20,
   },
   editButton: {
     flexDirection: "row",
     alignItems: "center",
-    backgroundColor: "#eff6ff",
     paddingHorizontal: 12,
     paddingVertical: 8,
     borderRadius: 8,
     marginLeft: 10,
   },
   editButtonText: {
-    color: "#3b82f6",
     fontSize: 13,
     fontWeight: "600",
     marginLeft: 4,
@@ -575,13 +622,11 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "center",
-    backgroundColor: "#eff6ff",
     borderRadius: 10,
     paddingVertical: 10,
     paddingHorizontal: 10,
   },
   linkButtonText: {
-    color: "#3b82f6",
     fontSize: 13,
     fontWeight: "600",
     marginLeft: 5,
@@ -598,22 +643,13 @@ const styles = StyleSheet.create({
   label: {
     fontSize: 13,
     fontWeight: "600",
-    color: "#334155",
   },
   input: {
-    backgroundColor: "#f8fafc",
     borderWidth: 1,
-    borderColor: "#cbd5e1",
     borderRadius: 10,
     paddingHorizontal: 14,
     paddingVertical: 12,
     fontSize: 15,
-    color: "#1e293b",
-  },
-  inputLocked: {
-    backgroundColor: "#f1f5f9",
-    borderColor: "#e2e8f0",
-    color: "#64748b",
   },
   passwordWrapper: {
     position: "relative",
@@ -636,27 +672,12 @@ const styles = StyleSheet.create({
     marginBottom: 12,
     borderWidth: 1,
   },
-  errorBanner: {
-    backgroundColor: "#fef2f2",
-    borderColor: "#fecaca",
-  },
-  successBanner: {
-    backgroundColor: "#f0fdf4",
-    borderColor: "#bbf7d0",
-  },
   messageText: {
     fontSize: 13,
     marginLeft: 8,
     flex: 1,
   },
-  errorText: {
-    color: "#dc2626",
-  },
-  successText: {
-    color: "#059669",
-  },
   saveButton: {
-    backgroundColor: "#3b82f6",
     borderRadius: 12,
     paddingVertical: 14,
     flexDirection: "row",
@@ -674,7 +695,6 @@ const styles = StyleSheet.create({
     marginLeft: 8,
   },
   lockedBannerButton: {
-    backgroundColor: "#eff6ff",
     borderRadius: 12,
     paddingVertical: 14,
     paddingHorizontal: 16,
@@ -683,10 +703,8 @@ const styles = StyleSheet.create({
     justifyContent: "center",
     marginTop: 6,
     borderWidth: 1,
-    borderColor: "#bfdbfe",
   },
   lockedBannerText: {
-    color: "#2563eb",
     fontSize: 14,
     fontWeight: "600",
     marginLeft: 8,
@@ -699,7 +717,6 @@ const styles = StyleSheet.create({
     marginTop: 10,
   },
   wipeLinkText: {
-    color: "#dc2626",
     fontSize: 14,
     fontWeight: "600",
     marginLeft: 6,
@@ -712,7 +729,6 @@ const styles = StyleSheet.create({
     padding: 20,
   },
   modalCard: {
-    backgroundColor: "#ffffff",
     borderRadius: 20,
     padding: 24,
     width: "100%",
@@ -723,7 +739,6 @@ const styles = StyleSheet.create({
     width: 60,
     height: 60,
     borderRadius: 30,
-    backgroundColor: "#fef2f2",
     justifyContent: "center",
     alignItems: "center",
     marginBottom: 16,
@@ -731,13 +746,11 @@ const styles = StyleSheet.create({
   modalTitle: {
     fontSize: 19,
     fontWeight: "700",
-    color: "#1e293b",
     marginBottom: 10,
     textAlign: "center",
   },
   modalBody: {
     fontSize: 14,
-    color: "#475569",
     textAlign: "center",
     lineHeight: 21,
     marginBottom: 24,
@@ -749,20 +762,17 @@ const styles = StyleSheet.create({
   },
   modalCancelButton: {
     flex: 1,
-    backgroundColor: "#f1f5f9",
     borderRadius: 12,
     paddingVertical: 13,
     alignItems: "center",
     justifyContent: "center",
   },
   modalCancelText: {
-    color: "#334155",
     fontSize: 15,
     fontWeight: "600",
   },
   modalConfirmButton: {
     flex: 1.4,
-    backgroundColor: "#dc2626",
     borderRadius: 12,
     paddingVertical: 13,
     flexDirection: "row",

@@ -3,6 +3,7 @@ import * as SecureStore from "expo-secure-store"
 import * as LocalAuthentication from "expo-local-authentication"
 import * as Crypto from "expo-crypto"
 import * as Device from "expo-device"
+import { AkahuUser } from "@/types"
 
 // Cross-platform secure storage helper (uses SecureStore on iOS/Android, localStorage on web preview)
 const setItem = async (key: string, value: string): Promise<void> => {
@@ -234,11 +235,11 @@ export class SecurityManager {
     }
   }
 
-  static async storeUserProfile(user: Record<string, unknown>): Promise<void> {
+  static async storeUserProfile(user: AkahuUser): Promise<void> {
     await setItem(this.USER_PROFILE_KEY, JSON.stringify(user))
   }
 
-  static async getUserProfile(): Promise<Record<string, unknown> | null> {
+  static async getUserProfile(): Promise<AkahuUser | null> {
     const raw = await getItem(this.USER_PROFILE_KEY)
     if (!raw) return null
     try {

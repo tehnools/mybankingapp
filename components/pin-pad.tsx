@@ -2,6 +2,7 @@ import React from "react"
 import { View, StyleSheet, TouchableOpacity, ActivityIndicator } from "react-native"
 import { Ionicons } from "@expo/vector-icons"
 import { Text } from "./app-text"
+import { useAppTheme } from "../lib/theme"
 
 export interface PinPadProps {
   title: string
@@ -35,6 +36,8 @@ export const PinPad = ({
   onBiometricPress,
   onCancel,
 }: PinPadProps): React.JSX.Element => {
+  const { colors } = useAppTheme()
+
   const handleKeyPress = (key: string): void => {
     if (isLoading) return
 
@@ -61,29 +64,38 @@ export const PinPad = ({
   return (
     <View style={styles.container}>
       <View style={styles.header}>
-        <View style={styles.iconCircle}>
-          <Ionicons name="keypad-outline" size={28} color="#3b82f6" />
+        <View style={[styles.iconCircle, { backgroundColor: colors.primarySoft }]}>
+          <Ionicons name="keypad-outline" size={28} color={colors.primary} />
         </View>
-        <Text style={styles.title}>{title}</Text>
-        <Text style={styles.subtitle}>{subtitle}</Text>
+        <Text style={[styles.title, { color: colors.text }]}>{title}</Text>
+        <Text style={[styles.subtitle, { color: colors.subtext }]}>{subtitle}</Text>
       </View>
 
       {/* 6 PIN Dots */}
       <View style={styles.dotsRow}>
         {[0, 1, 2, 3, 4, 5].map((index: number): React.JSX.Element => {
           const filled = index < value.length
-          return <View key={index} style={[styles.dot, filled && styles.dotFilled]} />
+          return (
+            <View
+              key={index}
+              style={[
+                styles.dot,
+                { borderColor: colors.border },
+                filled && { borderColor: colors.primary, backgroundColor: colors.primary },
+              ]}
+            />
+          )
         })}
       </View>
 
       {isLoading ? (
         <View style={styles.statusSlot}>
-          <ActivityIndicator size="small" color="#3b82f6" />
+          <ActivityIndicator size="small" color={colors.primary} />
         </View>
       ) : errorMessage ? (
-        <View style={styles.errorBanner}>
-          <Ionicons name="alert-circle" size={16} color="#dc2626" />
-          <Text style={styles.errorText}>{errorMessage}</Text>
+        <View style={[styles.errorBanner, { backgroundColor: colors.negativeSoft, borderColor: colors.negative }]}>
+          <Ionicons name="alert-circle" size={16} color={colors.negative} />
+          <Text style={[styles.errorText, { color: colors.negative }]}>{errorMessage}</Text>
         </View>
       ) : (
         <View style={styles.statusSlot} />
@@ -105,7 +117,7 @@ export const PinPad = ({
                     onPress={() => handleKeyPress(key)}
                     disabled={isLoading}
                   >
-                    <Ionicons name="finger-print" size={26} color="#3b82f6" />
+                    <Ionicons name="finger-print" size={26} color={colors.primary} />
                   </TouchableOpacity>
                 )
               }
@@ -121,7 +133,7 @@ export const PinPad = ({
                     <Ionicons
                       name="backspace-outline"
                       size={24}
-                      color={value.length === 0 ? "#cbd5e1" : "#334155"}
+                      color={value.length === 0 ? colors.border : colors.subtext}
                     />
                   </TouchableOpacity>
                 )
@@ -130,11 +142,11 @@ export const PinPad = ({
               return (
                 <TouchableOpacity
                   key={key}
-                  style={styles.keyButton}
+                  style={[styles.keyButton, { backgroundColor: colors.background, borderColor: colors.border }]}
                   onPress={() => handleKeyPress(key)}
                   disabled={isLoading}
                 >
-                  <Text style={styles.keyText} preventOrphans={false}>
+                  <Text style={[styles.keyText, { color: colors.text }]} preventOrphans={false}>
                     {key}
                   </Text>
                 </TouchableOpacity>
@@ -146,7 +158,7 @@ export const PinPad = ({
 
       {onCancel && (
         <TouchableOpacity style={styles.cancelButton} onPress={onCancel} disabled={isLoading}>
-          <Text style={styles.cancelText}>Cancel</Text>
+          <Text style={[styles.cancelText, { color: colors.subtext }]}>Cancel</Text>
         </TouchableOpacity>
       )}
     </View>
@@ -168,7 +180,6 @@ const styles = StyleSheet.create({
     width: 60,
     height: 60,
     borderRadius: 30,
-    backgroundColor: "#eff6ff",
     justifyContent: "center",
     alignItems: "center",
     marginBottom: 14,
@@ -176,13 +187,11 @@ const styles = StyleSheet.create({
   title: {
     fontSize: 20,
     fontWeight: "700",
-    color: "#1e293b",
     marginBottom: 6,
     textAlign: "center",
   },
   subtitle: {
     fontSize: 14,
-    color: "#64748b",
     textAlign: "center",
     lineHeight: 20,
   },
@@ -196,12 +205,7 @@ const styles = StyleSheet.create({
     height: 14,
     borderRadius: 7,
     borderWidth: 2,
-    borderColor: "#cbd5e1",
     backgroundColor: "transparent",
-  },
-  dotFilled: {
-    borderColor: "#3b82f6",
-    backgroundColor: "#3b82f6",
   },
   statusSlot: {
     minHeight: 34,
@@ -212,8 +216,6 @@ const styles = StyleSheet.create({
   errorBanner: {
     flexDirection: "row",
     alignItems: "center",
-    backgroundColor: "#fef2f2",
-    borderColor: "#fecaca",
     borderWidth: 1,
     borderRadius: 10,
     paddingHorizontal: 12,
@@ -222,7 +224,6 @@ const styles = StyleSheet.create({
     width: "100%",
   },
   errorText: {
-    color: "#dc2626",
     fontSize: 13,
     marginLeft: 6,
     flex: 1,
@@ -241,9 +242,7 @@ const styles = StyleSheet.create({
     flex: 1,
     aspectRatio: 1.25,
     borderRadius: 14,
-    backgroundColor: "#f8fafc",
     borderWidth: 1,
-    borderColor: "#e2e8f0",
     justifyContent: "center",
     alignItems: "center",
   },
@@ -257,7 +256,6 @@ const styles = StyleSheet.create({
   keyText: {
     fontSize: 22,
     fontWeight: "600",
-    color: "#1e293b",
   },
   cancelButton: {
     marginTop: 18,
@@ -265,7 +263,6 @@ const styles = StyleSheet.create({
     paddingHorizontal: 20,
   },
   cancelText: {
-    color: "#64748b",
     fontSize: 15,
     fontWeight: "600",
   },

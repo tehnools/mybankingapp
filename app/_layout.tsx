@@ -1,6 +1,6 @@
 import React from "react"
-import { View, StyleSheet, ActivityIndicator, type ColorValue } from "react-native"
-import { Tabs } from "expo-router"
+import { View, StyleSheet, ActivityIndicator, useColorScheme } from "react-native"
+import { Tabs, ThemeProvider } from "expo-router"
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query"
 import { SafeAreaProvider } from "react-native-safe-area-context"
 import { StatusBar } from "expo-status-bar"
@@ -9,6 +9,7 @@ import { PinPad } from "../components/pin-pad"
 import { useAutoBiometricUnlock, useUnlockAppSession, useUnlockAppWithPin } from "../hooks/use-akahu-data"
 import { useAppLifecycleState } from "../hooks/use-app-state"
 import { useLockScreenStore } from "../lib/store"
+import { DarkAppTheme, LightAppTheme, useAppTheme } from "../lib/theme"
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -20,6 +21,7 @@ const queryClient = new QueryClient({
 })
 
 const AppLockGate = ({ children }: { children: React.ReactNode }): React.JSX.Element => {
+  const { colors } = useAppTheme()
   const { requiresUnlock, biometricEnabled, isLoading } = useAppLifecycleState()
   const { pinInput, setPinInput } = useLockScreenStore()
 
@@ -29,8 +31,8 @@ const AppLockGate = ({ children }: { children: React.ReactNode }): React.JSX.Ele
 
   if (isLoading) {
     return (
-      <View style={styles.lockContainer}>
-        <ActivityIndicator size="large" color="#3b82f6" />
+      <View style={[styles.lockContainer, { backgroundColor: colors.headerBackground }]}>
+        <ActivityIndicator size="large" color={colors.primary} />
       </View>
     )
   }
@@ -45,8 +47,8 @@ const AppLockGate = ({ children }: { children: React.ReactNode }): React.JSX.Ele
     const isAuthenticating = unlockBioMutation.isPending || unlockPinMutation.isPending || autoUnlockQuery.isFetching
 
     return (
-      <View style={styles.lockContainer}>
-        <View style={styles.lockCard}>
+      <View style={[styles.lockContainer, { backgroundColor: colors.headerBackground }]}>
+        <View style={[styles.lockCard, { backgroundColor: colors.card }]}>
           <PinPad
             title="Unlock NZ Money Manager"
             subtitle={
@@ -78,59 +80,72 @@ const AppLockGate = ({ children }: { children: React.ReactNode }): React.JSX.Ele
   return <>{children}</>
 }
 
+const ThemedTabs = (): React.JSX.Element => {
+  const { colors } = useAppTheme()
+
+  return (
+    <Tabs
+      screenOptions={{
+        headerStyle: {
+          backgroundColor: colors.headerBackground,
+        },
+        headerTintColor: colors.headerText,
+        headerTitleStyle: {
+          fontWeight: "600",
+        },
+        tabBarActiveTintColor: colors.primary,
+        tabBarInactiveTintColor: colors.muted,
+        tabBarStyle: {
+          backgroundColor: colors.card,
+          borderTopColor: colors.border,
+        },
+      }}
+    >
+      <Tabs.Screen
+        name="index"
+        options={{
+          title: "Home",
+          tabBarIcon: ({ focused, size }: { focused: boolean; size: number }): React.JSX.Element => (
+            <Ionicons name="home-outline" size={size} color={focused ? colors.primary : colors.muted} />
+          ),
+        }}
+      />
+      <Tabs.Screen
+        name="accounts"
+        options={{
+          title: "Accounts",
+          tabBarIcon: ({ focused, size }: { focused: boolean; size: number }): React.JSX.Element => (
+            <Ionicons name="card-outline" size={size} color={focused ? colors.primary : colors.muted} />
+          ),
+        }}
+      />
+      <Tabs.Screen
+        name="settings"
+        options={{
+          title: "Settings",
+          tabBarIcon: ({ focused, size }: { focused: boolean; size: number }): React.JSX.Element => (
+            <Ionicons name="settings-outline" size={size} color={focused ? colors.primary : colors.muted} />
+          ),
+        }}
+      />
+    </Tabs>
+  )
+}
+
 const RootLayout = (): React.JSX.Element => {
+  const colorScheme = useColorScheme()
+  const activeTheme = colorScheme === "dark" ? DarkAppTheme : LightAppTheme
+
   return (
     <SafeAreaProvider>
-      <QueryClientProvider client={queryClient}>
-        <AppLockGate>
-          <Tabs
-            screenOptions={{
-              headerStyle: {
-                backgroundColor: "#1a365d",
-              },
-              headerTintColor: "#ffffff",
-              headerTitleStyle: {
-                fontWeight: "600",
-              },
-              tabBarActiveTintColor: "#3b82f6",
-              tabBarInactiveTintColor: "#94a3b8",
-              tabBarStyle: {
-                backgroundColor: "#ffffff",
-                borderTopColor: "#e2e8f0",
-              },
-            }}
-          >
-            <Tabs.Screen
-              name="index"
-              options={{
-                title: "Home",
-                tabBarIcon: ({ color, size }: { color: ColorValue; size: number }): React.JSX.Element => (
-                  <Ionicons name="home-outline" size={size} color={color ?? undefined} />
-                ),
-              }}
-            />
-            <Tabs.Screen
-              name="accounts"
-              options={{
-                title: "Accounts",
-                tabBarIcon: ({ color, size }: { color: ColorValue; size: number }): React.JSX.Element => (
-                  <Ionicons name="card-outline" size={size} color={color ?? undefined} />
-                ),
-              }}
-            />
-            <Tabs.Screen
-              name="settings"
-              options={{
-                title: "Settings",
-                tabBarIcon: ({ color, size }: { color: ColorValue; size: number }): React.JSX.Element => (
-                  <Ionicons name="settings-outline" size={size} color={color ?? undefined} />
-                ),
-              }}
-            />
-          </Tabs>
-        </AppLockGate>
-        <StatusBar style="light" />
-      </QueryClientProvider>
+      <ThemeProvider value={activeTheme}>
+        <QueryClientProvider client={queryClient}>
+          <AppLockGate>
+            <ThemedTabs />
+          </AppLockGate>
+          <StatusBar style="light" />
+        </QueryClientProvider>
+      </ThemeProvider>
     </SafeAreaProvider>
   )
 }
@@ -140,13 +155,11 @@ export default RootLayout
 const styles = StyleSheet.create({
   lockContainer: {
     flex: 1,
-    backgroundColor: "#1a365d",
     justifyContent: "center",
     alignItems: "center",
     padding: 20,
   },
   lockCard: {
-    backgroundColor: "#ffffff",
     borderRadius: 22,
     padding: 24,
     width: "100%",

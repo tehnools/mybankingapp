@@ -1,0 +1,542 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>NZ Money Manager — Visual Design Guide</title>
+    <style>
+      :root {
+        --font-sans: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+        --font-mono: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+      }
+      * {
+        box-sizing: border-box;
+        margin: 0;
+        padding: 0;
+      }
+      body {
+        font-family: var(--font-sans);
+        background: #faf8f6;
+        color: #1c1917;
+        line-height: 1.5;
+        padding: 40px 24px 80px;
+      }
+      .container {
+        max-width: 1080px;
+        margin: 0 auto;
+      }
+      header {
+        border-bottom: 1px solid #ece6e1;
+        padding-bottom: 24px;
+        margin-bottom: 36px;
+        display: flex;
+        justify-content: space-between;
+        align-items: flex-end;
+        flex-wrap: wrap;
+        gap: 16px;
+      }
+      .brand-pill {
+        display: inline-flex;
+        align-items: center;
+        gap: 8px;
+        background: #fdf0ed;
+        color: #e06d53;
+        font-weight: 700;
+        font-size: 13px;
+        padding: 6px 12px;
+        border-radius: 999px;
+        margin-bottom: 10px;
+      }
+      .brand-dot {
+        width: 10px;
+        height: 10px;
+        border-radius: 50%;
+        background: #e06d53;
+      }
+      h1 {
+        font-size: 28px;
+        font-weight: 800;
+        letter-spacing: -0.02em;
+      }
+      h2 {
+        font-size: 20px;
+        font-weight: 700;
+        margin-bottom: 16px;
+      }
+      .subtitle {
+        color: #68615c;
+        font-size: 15px;
+        margin-top: 4px;
+      }
+      section {
+        margin-bottom: 48px;
+      }
+      .grid-2 {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(340px, 1fr));
+        gap: 24px;
+      }
+      .theme-panel {
+        border-radius: 20px;
+        padding: 24px;
+        border: 1px solid;
+      }
+      .theme-light {
+        background: #faf8f6;
+        border-color: #ece6e1;
+        color: #1c1917;
+      }
+      .theme-dark {
+        background: #121117;
+        border-color: #2e2b3b;
+        color: #faf8f6;
+      }
+      .panel-header {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        padding-bottom: 14px;
+        margin-bottom: 16px;
+        border-bottom: 1px solid;
+      }
+      .swatch-grid {
+        display: grid;
+        grid-template-columns: repeat(2, 1fr);
+        gap: 10px;
+      }
+      .swatch-card {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        padding: 10px;
+        border-radius: 12px;
+        border: 1px solid;
+      }
+      .swatch-box {
+        width: 32px;
+        height: 32px;
+        border-radius: 8px;
+        flex-shrink: 0;
+        border: 1px solid rgba(128, 128, 128, 0.2);
+      }
+      .token-name {
+        font-size: 13px;
+        font-weight: 600;
+      }
+      .token-hex {
+        font-size: 12px;
+        font-family: var(--font-mono);
+        opacity: 0.75;
+      }
+      .phone-frame {
+        border-radius: 22px;
+        padding: 20px;
+        border: 1px solid;
+        display: flex;
+        flex-direction: column;
+        gap: 14px;
+      }
+      .hero-card {
+        border-radius: 16px;
+        padding: 18px;
+      }
+      .badge-row {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        margin-bottom: 10px;
+        font-size: 11px;
+        font-weight: 700;
+      }
+      .badge {
+        padding: 4px 10px;
+        border-radius: 6px;
+      }
+      .account-row {
+        border-radius: 14px;
+        padding: 14px;
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        border: 1px solid;
+      }
+      .account-left {
+        display: flex;
+        align-items: center;
+        gap: 12px;
+      }
+      .icon-box {
+        width: 42px;
+        height: 42px;
+        border-radius: 11px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-weight: 700;
+        font-size: 16px;
+      }
+      .cta-btn {
+        background: #e06d53;
+        color: #ffffff;
+        font-weight: 600;
+        font-size: 15px;
+        text-align: center;
+        padding: 13px;
+        border-radius: 12px;
+      }
+      table {
+        width: 100%;
+        border-collapse: collapse;
+        background: #ffffff;
+        border-radius: 14px;
+        overflow: hidden;
+        border: 1px solid #ece6e1;
+        font-size: 14px;
+      }
+      th,
+      td {
+        text-align: left;
+        padding: 12px 16px;
+        border-bottom: 1px solid #ece6e1;
+      }
+      th {
+        background: #faf8f6;
+        font-weight: 700;
+        color: #68615c;
+        font-size: 12px;
+        text-transform: uppercase;
+      }
+      code {
+        font-family: var(--font-mono);
+        background: #fdf0ed;
+        color: #e06d53;
+        padding: 2px 6px;
+        border-radius: 5px;
+        font-size: 12px;
+      }
+    </style>
+  </head>
+  <body>
+    <div class="container">
+      <header>
+        <div>
+          <div class="brand-pill"><span class="brand-dot"></span> TERRACOTTA_CORAL (#E06D53)</div>
+          <h1>NZ Money Manager — Design System Guide</h1>
+          <p class="subtitle">
+            Side-by-side LightAppTheme &amp; DarkAppTheme semantic tokens, mobile UI previews, and typography
+            specifications.
+          </p>
+        </div>
+        <div><code>useAppTheme()</code> from <code>lib/theme.ts</code></div>
+      </header>
+
+      <!-- Section 1: Side-by-Side Swatches -->
+      <section>
+        <h2>1. Semantic Color Palettes (Light vs. Dark)</h2>
+        <div class="grid-2">
+          <!-- Light Mode Swatches -->
+          <div class="theme-panel theme-light">
+            <div class="panel-header" style="border-color: #ece6e1">
+              <strong>LightAppTheme</strong>
+              <span class="token-hex">#FAF8F6 Canvas</span>
+            </div>
+            <div class="swatch-grid">
+              <div class="swatch-card" style="background: #ffffff; border-color: #ece6e1">
+                <div class="swatch-box" style="background: #e06d53"></div>
+                <div>
+                  <div class="token-name">primary</div>
+                  <div class="token-hex">#E06D53</div>
+                </div>
+              </div>
+              <div class="swatch-card" style="background: #ffffff; border-color: #ece6e1">
+                <div class="swatch-box" style="background: #fdf0ed"></div>
+                <div>
+                  <div class="token-name">primarySoft</div>
+                  <div class="token-hex">#FDF0ED</div>
+                </div>
+              </div>
+              <div class="swatch-card" style="background: #ffffff; border-color: #ece6e1">
+                <div class="swatch-box" style="background: #1c1917"></div>
+                <div>
+                  <div class="token-name">headerBackground</div>
+                  <div class="token-hex">#1C1917</div>
+                </div>
+              </div>
+              <div class="swatch-card" style="background: #ffffff; border-color: #ece6e1">
+                <div class="swatch-box" style="background: #ffffff"></div>
+                <div>
+                  <div class="token-name">card</div>
+                  <div class="token-hex">#FFFFFF</div>
+                </div>
+              </div>
+              <div class="swatch-card" style="background: #ffffff; border-color: #ece6e1">
+                <div class="swatch-box" style="background: #1c1917"></div>
+                <div>
+                  <div class="token-name">text</div>
+                  <div class="token-hex">#1C1917</div>
+                </div>
+              </div>
+              <div class="swatch-card" style="background: #ffffff; border-color: #ece6e1">
+                <div class="swatch-box" style="background: #68615c"></div>
+                <div>
+                  <div class="token-name">subtext</div>
+                  <div class="token-hex">#68615C</div>
+                </div>
+              </div>
+              <div class="swatch-card" style="background: #ffffff; border-color: #ece6e1">
+                <div class="swatch-box" style="background: #a09892"></div>
+                <div>
+                  <div class="token-name">muted</div>
+                  <div class="token-hex">#A09892</div>
+                </div>
+              </div>
+              <div class="swatch-card" style="background: #ffffff; border-color: #ece6e1">
+                <div class="swatch-box" style="background: #ece6e1"></div>
+                <div>
+                  <div class="token-name">border</div>
+                  <div class="token-hex">#ECE6E1</div>
+                </div>
+              </div>
+              <div class="swatch-card" style="background: #ffffff; border-color: #ece6e1">
+                <div class="swatch-box" style="background: #15803d"></div>
+                <div>
+                  <div class="token-name">positive</div>
+                  <div class="token-hex">#15803D</div>
+                </div>
+              </div>
+              <div class="swatch-card" style="background: #ffffff; border-color: #ece6e1">
+                <div class="swatch-box" style="background: #dc2626"></div>
+                <div>
+                  <div class="token-name">negative</div>
+                  <div class="token-hex">#DC2626</div>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <!-- Dark Mode Swatches -->
+          <div class="theme-panel theme-dark">
+            <div class="panel-header" style="border-color: #2e2b3b">
+              <strong>DarkAppTheme</strong>
+              <span class="token-hex">#121117 Canvas</span>
+            </div>
+            <div class="swatch-grid">
+              <div class="swatch-card" style="background: #1e1c26; border-color: #2e2b3b">
+                <div class="swatch-box" style="background: #e06d53"></div>
+                <div>
+                  <div class="token-name">primary</div>
+                  <div class="token-hex">#E06D53</div>
+                </div>
+              </div>
+              <div class="swatch-card" style="background: #1e1c26; border-color: #2e2b3b">
+                <div class="swatch-box" style="background: #3d201a"></div>
+                <div>
+                  <div class="token-name">primarySoft</div>
+                  <div class="token-hex">#3D201A</div>
+                </div>
+              </div>
+              <div class="swatch-card" style="background: #1e1c26; border-color: #2e2b3b">
+                <div class="swatch-box" style="background: #121117"></div>
+                <div>
+                  <div class="token-name">headerBackground</div>
+                  <div class="token-hex">#121117</div>
+                </div>
+              </div>
+              <div class="swatch-card" style="background: #1e1c26; border-color: #2e2b3b">
+                <div class="swatch-box" style="background: #1e1c26"></div>
+                <div>
+                  <div class="token-name">card</div>
+                  <div class="token-hex">#1E1C26</div>
+                </div>
+              </div>
+              <div class="swatch-card" style="background: #1e1c26; border-color: #2e2b3b">
+                <div class="swatch-box" style="background: #faf8f6"></div>
+                <div>
+                  <div class="token-name">text</div>
+                  <div class="token-hex">#FAF8F6</div>
+                </div>
+              </div>
+              <div class="swatch-card" style="background: #1e1c26; border-color: #2e2b3b">
+                <div class="swatch-box" style="background: #a8a29e"></div>
+                <div>
+                  <div class="token-name">subtext</div>
+                  <div class="token-hex">#A8A29E</div>
+                </div>
+              </div>
+              <div class="swatch-card" style="background: #1e1c26; border-color: #2e2b3b">
+                <div class="swatch-box" style="background: #78716c"></div>
+                <div>
+                  <div class="token-name">muted</div>
+                  <div class="token-hex">#78716C</div>
+                </div>
+              </div>
+              <div class="swatch-card" style="background: #1e1c26; border-color: #2e2b3b">
+                <div class="swatch-box" style="background: #2e2b3b"></div>
+                <div>
+                  <div class="token-name">border</div>
+                  <div class="token-hex">#2E2B3B</div>
+                </div>
+              </div>
+              <div class="swatch-card" style="background: #1e1c26; border-color: #2e2b3b">
+                <div class="swatch-box" style="background: #34d399"></div>
+                <div>
+                  <div class="token-name">positive</div>
+                  <div class="token-hex">#34D399</div>
+                </div>
+              </div>
+              <div class="swatch-card" style="background: #1e1c26; border-color: #2e2b3b">
+                <div class="swatch-box" style="background: #f87171"></div>
+                <div>
+                  <div class="token-name">negative</div>
+                  <div class="token-hex">#F87171</div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- Section 2: Side-by-Side Live Component Preview -->
+      <section>
+        <h2>2. Side-by-Side Mobile UI Component Preview</h2>
+        <div class="grid-2">
+          <!-- Light Phone Preview -->
+          <div class="phone-frame theme-light">
+            <div style="display: flex; justify-content: space-between; align-items: center">
+              <div>
+                <div style="font-size: 18px; font-weight: 700">Your Bank Accounts</div>
+                <div style="font-size: 12px; color: #68615c">Cached locally in SQLite</div>
+              </div>
+              <span class="badge" style="background: #fdf0ed; color: #e06d53; font-size: 13px; font-weight: 600"
+                >Sync</span
+              >
+            </div>
+
+            <div class="hero-card" style="background: #1c1917; color: #ffffff">
+              <div class="badge-row">
+                <span class="badge" style="background: rgba(255, 255, 255, 0.15)">ANZ</span>
+                <span class="badge" style="background: #fdf0ed; color: #e06d53">SAVINGS</span>
+              </div>
+              <div style="font-size: 17px; font-weight: 700">Serious Saver</div>
+              <div style="font-size: 12px; color: #a09892; margin-bottom: 12px">01-1234-0123456-50</div>
+              <div style="border-top: 1px solid rgba(255, 255, 255, 0.12); padding-top: 10px">
+                <div style="font-size: 11px; color: #a09892; text-transform: uppercase">Net Account Balance</div>
+                <div style="font-size: 26px; font-weight: 800">$12,450.75</div>
+              </div>
+            </div>
+
+            <div class="account-row" style="background: #ffffff; border-color: #ece6e1">
+              <div class="account-left">
+                <div class="icon-box" style="background: #fdf0ed; color: #e06d53">$</div>
+                <div>
+                  <div style="font-size: 15px; font-weight: 600">Everyday Account</div>
+                  <div style="font-size: 12px; color: #68615c">ANZ • 01-1234-0123456-00</div>
+                </div>
+              </div>
+              <div style="display: flex; align-items: center; gap: 10px">
+                <span style="font-size: 15px; font-weight: 700; color: #15803d">$5,420.50</span>
+                <span style="font-weight: 700; color: #e06d53">&gt;</span>
+              </div>
+            </div>
+
+            <div class="cta-btn">Verify &amp; Set 6-Digit PIN</div>
+          </div>
+
+          <!-- Dark Phone Preview -->
+          <div class="phone-frame theme-dark">
+            <div style="display: flex; justify-content: space-between; align-items: center">
+              <div>
+                <div style="font-size: 18px; font-weight: 700">Your Bank Accounts</div>
+                <div style="font-size: 12px; color: #a8a29e">Cached locally in SQLite</div>
+              </div>
+              <span class="badge" style="background: #3d201a; color: #e06d53; font-size: 13px; font-weight: 600"
+                >Sync</span
+              >
+            </div>
+
+            <div class="hero-card" style="background: #1e1c26; color: #faf8f6; border: 1px solid #2e2b3b">
+              <div class="badge-row">
+                <span class="badge" style="background: rgba(255, 255, 255, 0.12)">ANZ</span>
+                <span class="badge" style="background: #3d201a; color: #e06d53">SAVINGS</span>
+              </div>
+              <div style="font-size: 17px; font-weight: 700">Serious Saver</div>
+              <div style="font-size: 12px; color: #78716c; margin-bottom: 12px">01-1234-0123456-50</div>
+              <div style="border-top: 1px solid rgba(255, 255, 255, 0.12); padding-top: 10px">
+                <div style="font-size: 11px; color: #78716c; text-transform: uppercase">Net Account Balance</div>
+                <div style="font-size: 26px; font-weight: 800">$12,450.75</div>
+              </div>
+            </div>
+
+            <div class="account-row" style="background: #1e1c26; border-color: #2e2b3b">
+              <div class="account-left">
+                <div class="icon-box" style="background: #3d201a; color: #e06d53">$</div>
+                <div>
+                  <div style="font-size: 15px; font-weight: 600">Everyday Account</div>
+                  <div style="font-size: 12px; color: #a8a29e">ANZ • 01-1234-0123456-00</div>
+                </div>
+              </div>
+              <div style="display: flex; align-items: center; gap: 10px">
+                <span style="font-size: 15px; font-weight: 700; color: #34d399">$5,420.50</span>
+                <span style="font-weight: 700; color: #e06d53">&gt;</span>
+              </div>
+            </div>
+
+            <div class="cta-btn">Verify &amp; Set 6-Digit PIN</div>
+          </div>
+        </div>
+      </section>
+
+      <!-- Section 3: Typography & Component Rules -->
+      <section>
+        <h2>3. Typography &amp; Component Specifications</h2>
+        <table>
+          <thead>
+            <tr>
+              <th>Element</th>
+              <th>Size / Weight</th>
+              <th>Component / Token</th>
+              <th>Guidelines</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td><strong>Orphan-Free Text</strong></td>
+              <td>All text roles</td>
+              <td><code>&lt;Text&gt;</code> (<code>components/app-text.tsx</code>)</td>
+              <td>
+                Joins the final word pair of 4+ word paragraphs with <code>\u00A0</code> and applies
+                <code>textBreakStrategy="balanced"</code>.
+              </td>
+            </tr>
+            <tr>
+              <td><strong>Hero Net Balance</strong></td>
+              <td><code>34px</code> / <code>800</code></td>
+              <td><code>colors.headerText</code> on <code>colors.headerBackground</code></td>
+              <td>Use <code>preventOrphans={false}</code> for numeric currency figures.</td>
+            </tr>
+            <tr>
+              <td><strong>Screen Header Title</strong></td>
+              <td><code>22px</code> / <code>700</code></td>
+              <td><code>colors.text</code></td>
+              <td>Paired with <code>13px–14px</code> subtitle in <code>colors.subtext</code>.</td>
+            </tr>
+            <tr>
+              <td><strong>Primary Action CTA</strong></td>
+              <td><code>15px–16px</code> / <code>600</code></td>
+              <td><code>colors.primary</code> (<code>#E06D53</code>) + <code>#FFFFFF</code> text</td>
+              <td><code>borderRadius: 12</code>, <code>paddingVertical: 14</code>.</td>
+            </tr>
+            <tr>
+              <td><strong>Secondary Action Pill</strong></td>
+              <td><code>13px–14px</code> / <code>600</code></td>
+              <td><code>colors.primarySoft</code> fill + <code>colors.primary</code> text</td>
+              <td>
+                Used for <code>Sync</code>, <code>Edit</code>, <code>Link Banks</code>, and <code>Paste</code> actions.
+              </td>
+            </tr>
+          </tbody>
+        </table>
+      </section>
+    </div>
+  </body>
+</html>

@@ -5,6 +5,7 @@ import { Ionicons } from "@expo/vector-icons"
 import { Text } from "../components/app-text"
 import { AkahuAuth } from "../lib/akahu-auth"
 import { useAppStore } from "../lib/store"
+import { useAppTheme } from "../lib/theme"
 import {
   useAkahuAccountById,
   useAkahuAccounts,
@@ -49,75 +50,91 @@ const AccountDetailView = ({
   accountId: string
   onBack: () => void
 }): React.JSX.Element => {
+  const { colors, dark } = useAppTheme()
   const { data: account, isLoading } = useAkahuAccountById(accountId)
 
   if (isLoading) {
     return (
-      <View style={styles.centeredContainer}>
-        <ActivityIndicator size="large" color="#3b82f6" />
-        <Text style={styles.loadingText}>Loading account details...</Text>
+      <View style={[styles.centeredContainer, { backgroundColor: colors.background }]}>
+        <ActivityIndicator size="large" color={colors.primary} />
+        <Text style={[styles.loadingText, { color: colors.subtext }]}>Loading account details...</Text>
       </View>
     )
   }
 
   if (!account) {
     return (
-      <View style={styles.centeredContainer}>
-        <Ionicons name="alert-circle-outline" size={44} color="#94a3b8" />
-        <Text style={styles.emptyTitle}>Account Not Found</Text>
-        <TouchableOpacity style={styles.backPillButton} onPress={onBack}>
-          <Ionicons name="arrow-back" size={18} color="#3b82f6" />
-          <Text style={styles.backPillText}>Back to Accounts</Text>
+      <View style={[styles.centeredContainer, { backgroundColor: colors.background }]}>
+        <Ionicons name="alert-circle-outline" size={44} color={colors.muted} />
+        <Text style={[styles.emptyTitle, { color: colors.text }]}>Account Not Found</Text>
+        <TouchableOpacity style={[styles.backPillButton, { backgroundColor: colors.primarySoft }]} onPress={onBack}>
+          <Ionicons name="arrow-back" size={18} color={colors.primary} />
+          <Text style={[styles.backPillText, { color: colors.primary }]}>Back to Accounts</Text>
         </TouchableOpacity>
       </View>
     )
   }
 
   return (
-    <ScrollView style={styles.detailScroll} contentContainerStyle={styles.detailScrollContent}>
+    <ScrollView
+      style={[styles.detailScroll, { backgroundColor: colors.background }]}
+      contentContainerStyle={styles.detailScrollContent}
+    >
       {/* Back to Accounts Row */}
       <TouchableOpacity style={styles.backRow} onPress={onBack}>
-        <Ionicons name="chevron-back" size={20} color="#3b82f6" />
-        <Text style={styles.backRowText} preventOrphans={false}>
+        <Ionicons name="chevron-back" size={20} color={colors.primary} />
+        <Text style={[styles.backRowText, { color: colors.primary }]} preventOrphans={false}>
           All Bank Accounts
         </Text>
       </TouchableOpacity>
 
       {/* Net Balance Card for This Bank Account */}
-      <View style={styles.netCard}>
+      <View
+        style={[
+          styles.netCard,
+          {
+            backgroundColor: dark ? colors.card : colors.headerBackground,
+            borderColor: dark ? colors.border : "transparent",
+            borderWidth: dark ? 1 : 0,
+          },
+        ]}
+      >
         <View style={styles.bankBadgeRow}>
           <View style={styles.bankBadge}>
-            <Text style={styles.bankBadgeText} preventOrphans={false}>
+            <Text style={[styles.bankBadgeText, { color: colors.headerText }]} preventOrphans={false}>
               {account.bank}
             </Text>
           </View>
-          <View style={styles.typeBadge}>
-            <Text style={styles.typeBadgeText} preventOrphans={false}>
+          <View style={[styles.typeBadge, { backgroundColor: colors.primarySoft }]}>
+            <Text style={[styles.typeBadgeText, { color: colors.primary }]} preventOrphans={false}>
               {account.type.toUpperCase()}
             </Text>
           </View>
         </View>
 
-        <Text style={styles.detailAccountName} preventOrphans={false}>
+        <Text style={[styles.detailAccountName, { color: colors.headerText }]} preventOrphans={false}>
           {account.name}
         </Text>
-        <Text style={styles.detailAccountNumber} preventOrphans={false}>
+        <Text style={[styles.detailAccountNumber, { color: colors.muted }]} preventOrphans={false}>
           {account.accountNumber}
         </Text>
 
         <View style={styles.netBalanceBox}>
-          <Text style={styles.netLabel} preventOrphans={false}>
+          <Text style={[styles.netLabel, { color: colors.muted }]} preventOrphans={false}>
             Net Account Balance
           </Text>
           <Text
-            style={[styles.netAmount, account.balance < 0 && styles.negativeNetAmount]}
+            style={[
+              styles.netAmount,
+              { color: account.balance < 0 ? colors.negative : colors.headerText },
+            ]}
             preventOrphans={false}
           >
             {formatCurrency(account.balance)}
           </Text>
 
           {account.availableBalance !== undefined && (
-            <Text style={styles.availableAmount} preventOrphans={false}>
+            <Text style={[styles.availableAmount, { color: colors.muted }]} preventOrphans={false}>
               Available Balance: {formatCurrency(account.availableBalance)}
             </Text>
           )}
@@ -127,22 +144,27 @@ const AccountDetailView = ({
       {/* Reserved Transactions Section (Empty Placeholder for Now) */}
       <View style={styles.transactionsSection}>
         <View style={styles.transactionsHeaderRow}>
-          <Text style={styles.sectionTitle} preventOrphans={false}>
+          <Text style={[styles.sectionTitle, { color: colors.text }]} preventOrphans={false}>
             Transactions
           </Text>
-          <View style={styles.comingSoonPill}>
-            <Text style={styles.comingSoonText} preventOrphans={false}>
+          <View style={[styles.comingSoonPill, { backgroundColor: colors.primarySoft }]}>
+            <Text style={[styles.comingSoonText, { color: colors.primary }]} preventOrphans={false}>
               Next Phase
             </Text>
           </View>
         </View>
 
-        <View style={styles.emptyTransactionsBox}>
-          <View style={styles.emptyTransactionsIcon}>
-            <Ionicons name="receipt-outline" size={32} color="#94a3b8" />
+        <View
+          style={[
+            styles.emptyTransactionsBox,
+            { backgroundColor: colors.card, borderColor: colors.border },
+          ]}
+        >
+          <View style={[styles.emptyTransactionsIcon, { backgroundColor: colors.primarySoft }]}>
+            <Ionicons name="receipt-outline" size={30} color={colors.primary} />
           </View>
-          <Text style={styles.emptyTransactionsTitle}>No Transactions Loaded Yet</Text>
-          <Text style={styles.emptyTransactionsSubtitle}>
+          <Text style={[styles.emptyTransactionsTitle, { color: colors.text }]}>No Transactions Loaded Yet</Text>
+          <Text style={[styles.emptyTransactionsSubtitle, { color: colors.subtext }]}>
             This space is reserved for {account.name} transactions. Transaction syncing will be plugged in during the
             next phase.
           </Text>
@@ -153,6 +175,7 @@ const AccountDetailView = ({
 }
 
 const AccountsScreen = (): React.JSX.Element => {
+  const { colors } = useAppTheme()
   const { data: connectionStatus, isLoading: isCheckingConnection } = useAkahuConnection()
   const { data: accounts, isLoading: isLoadingAccounts, refetch, isRefetching, error } = useAkahuAccounts()
   const refreshMutation = useRefreshAkahu()
@@ -184,30 +207,36 @@ const AccountsScreen = (): React.JSX.Element => {
 
   const renderAccountItem = ({ item }: { item: BankAccount }): React.JSX.Element => (
     <TouchableOpacity
-      style={styles.accountCard}
+      style={[styles.accountCard, { backgroundColor: colors.card, borderColor: colors.border }]}
       activeOpacity={0.7}
       onPress={(): void => handleOpenAccount(item.id)}
     >
-      <View style={styles.iconContainer}>
-        <Ionicons name={getAccountIcon(item.type)} size={24} color="#3b82f6" />
+      <View style={[styles.iconContainer, { backgroundColor: colors.primarySoft }]}>
+        <Ionicons name={getAccountIcon(item.type)} size={24} color={colors.primary} />
       </View>
 
       <View style={styles.accountDetails}>
-        <Text style={styles.accountName} preventOrphans={false}>
+        <Text style={[styles.accountName, { color: colors.text }]} preventOrphans={false}>
           {item.name}
         </Text>
-        <Text style={styles.bankSubtext} preventOrphans={false}>
+        <Text style={[styles.bankSubtext, { color: colors.subtext }]} preventOrphans={false}>
           {item.bank} • {item.accountNumber}
         </Text>
       </View>
 
       <View style={styles.rightSection}>
         <View style={styles.balanceColumn}>
-          <Text style={[styles.balanceText, item.balance < 0 && styles.negativeBalanceText]} preventOrphans={false}>
+          <Text
+            style={[
+              styles.balanceText,
+              { color: item.balance < 0 ? colors.negative : colors.positive },
+            ]}
+            preventOrphans={false}
+          >
             {formatCurrency(item.balance)}
           </Text>
           {item.availableBalance !== undefined && item.availableBalance !== item.balance && (
-            <Text style={styles.availableText} preventOrphans={false}>
+            <Text style={[styles.availableText, { color: colors.subtext }]} preventOrphans={false}>
               Avail: {formatCurrency(item.availableBalance)}
             </Text>
           )}
@@ -217,7 +246,7 @@ const AccountsScreen = (): React.JSX.Element => {
           onPress={(): void => handleOpenAccount(item.id)}
           hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
         >
-          <Ionicons name="chevron-forward" size={22} color="#3b82f6" />
+          <Ionicons name="chevron-forward" size={22} color={colors.primary} />
         </TouchableOpacity>
       </View>
     </TouchableOpacity>
@@ -225,24 +254,27 @@ const AccountsScreen = (): React.JSX.Element => {
 
   if (isCheckingConnection) {
     return (
-      <View style={styles.centeredContainer}>
-        <ActivityIndicator size="large" color="#3b82f6" />
-        <Text style={styles.loadingText}>Checking Akahu connection...</Text>
+      <View style={[styles.centeredContainer, { backgroundColor: colors.background }]}>
+        <ActivityIndicator size="large" color={colors.primary} />
+        <Text style={[styles.loadingText, { color: colors.subtext }]}>Checking Akahu connection...</Text>
       </View>
     )
   }
 
   if (!isConnected) {
     return (
-      <View style={styles.centeredContainer}>
-        <View style={styles.emptyIconCircle}>
-          <Ionicons name="card-outline" size={36} color="#3b82f6" />
+      <View style={[styles.centeredContainer, { backgroundColor: colors.background }]}>
+        <View style={[styles.emptyIconCircle, { backgroundColor: colors.primarySoft }]}>
+          <Ionicons name="card-outline" size={36} color={colors.primary} />
         </View>
-        <Text style={styles.emptyTitle}>No Akahu Connection</Text>
-        <Text style={styles.emptySubtitle}>
+        <Text style={[styles.emptyTitle, { color: colors.text }]}>No Akahu Connection</Text>
+        <Text style={[styles.emptySubtitle, { color: colors.subtext }]}>
           Add your Akahu App ID Token and User Access Token in the Settings tab to sync and store your NZ bank accounts.
         </Text>
-        <TouchableOpacity style={styles.primaryButton} onPress={(): void => router.push("/settings")}>
+        <TouchableOpacity
+          style={[styles.primaryButton, { backgroundColor: colors.primary }]}
+          onPress={(): void => router.push("/settings")}
+        >
           <Ionicons name="settings-outline" size={18} color="#ffffff" />
           <Text style={styles.primaryButtonText}>Open Settings</Text>
         </TouchableOpacity>
@@ -256,41 +288,43 @@ const AccountsScreen = (): React.JSX.Element => {
     null
 
   return (
-    <View style={styles.container}>
+    <View style={[styles.container, { backgroundColor: colors.background }]}>
       {/* Header Bar */}
       <View style={styles.headerRow}>
         <View style={{ flex: 1 }}>
-          <Text style={styles.headerTitle}>Your Bank Accounts</Text>
-          <Text style={styles.headerSubtitle}>Cached locally in SQLite • Tap an account to view details</Text>
+          <Text style={[styles.headerTitle, { color: colors.text }]}>Your Bank Accounts</Text>
+          <Text style={[styles.headerSubtitle, { color: colors.subtext }]}>
+            Cached locally in SQLite • Tap an account to view details
+          </Text>
         </View>
 
         <TouchableOpacity
-          style={styles.syncButton}
+          style={[styles.syncButton, { backgroundColor: colors.primarySoft }]}
           onPress={handleSync}
           disabled={refreshMutation.isPending || isRefetching}
         >
           {refreshMutation.isPending || isRefetching ? (
-            <ActivityIndicator size="small" color="#3b82f6" />
+            <ActivityIndicator size="small" color={colors.primary} />
           ) : (
-            <Ionicons name="refresh" size={18} color="#3b82f6" />
+            <Ionicons name="refresh" size={18} color={colors.primary} />
           )}
-          <Text style={styles.syncButtonText} preventOrphans={false}>
+          <Text style={[styles.syncButtonText, { color: colors.primary }]} preventOrphans={false}>
             {refreshMutation.isPending ? "Syncing..." : "Sync"}
           </Text>
         </TouchableOpacity>
       </View>
 
       {errorMessage && (
-        <View style={styles.errorBanner}>
-          <Ionicons name="alert-circle" size={18} color="#dc2626" />
-          <Text style={styles.errorText}>{errorMessage}</Text>
+        <View style={[styles.errorBanner, { backgroundColor: colors.negativeSoft, borderColor: colors.negative }]}>
+          <Ionicons name="alert-circle" size={18} color={colors.negative} />
+          <Text style={[styles.errorText, { color: colors.negative }]}>{errorMessage}</Text>
         </View>
       )}
 
       {isLoadingAccounts && accountList.length === 0 ? (
-        <View style={styles.centeredContainer}>
-          <ActivityIndicator size="large" color="#3b82f6" />
-          <Text style={styles.loadingText}>Loading your NZ bank accounts...</Text>
+        <View style={[styles.centeredContainer, { backgroundColor: colors.background }]}>
+          <ActivityIndicator size="large" color={colors.primary} />
+          <Text style={[styles.loadingText, { color: colors.subtext }]}>Loading your NZ bank accounts...</Text>
         </View>
       ) : (
         <FlatList
@@ -305,22 +339,27 @@ const AccountsScreen = (): React.JSX.Element => {
           }}
           ListEmptyComponent={
             <View style={styles.emptyListBox}>
-              <Ionicons name="wallet-outline" size={44} color="#94a3b8" />
-              <Text style={styles.emptyTitle}>No Accounts Found</Text>
-              <Text style={styles.emptySubtitle}>
+              <Ionicons name="wallet-outline" size={44} color={colors.muted} />
+              <Text style={[styles.emptyTitle, { color: colors.text }]}>No Accounts Found</Text>
+              <Text style={[styles.emptySubtitle, { color: colors.subtext }]}>
                 Link your NZ bank accounts on Akahu and tap Sync to pull them into the app.
               </Text>
             </View>
           }
           ListFooterComponent={
             <TouchableOpacity
-              style={styles.linkBankButton}
+              style={[
+                styles.linkBankButton,
+                { backgroundColor: colors.card, borderColor: colors.primary },
+              ]}
               onPress={(): void => {
                 AkahuAuth.openAkahuAccountSetup()
               }}
             >
-              <Ionicons name="add-circle-outline" size={20} color="#3b82f6" />
-              <Text style={styles.linkBankButtonText}>Add / Manage Bank Accounts on Akahu</Text>
+              <Ionicons name="add-circle-outline" size={20} color={colors.primary} />
+              <Text style={[styles.linkBankButtonText, { color: colors.primary }]}>
+                Add / Manage Bank Accounts on Akahu
+              </Text>
             </TouchableOpacity>
           }
         />
@@ -334,13 +373,11 @@ export default AccountsScreen
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: "#f8fafc",
     paddingHorizontal: 20,
     paddingTop: 18,
   },
   centeredContainer: {
     flex: 1,
-    backgroundColor: "#f8fafc",
     justifyContent: "center",
     alignItems: "center",
     padding: 28,
@@ -354,24 +391,20 @@ const styles = StyleSheet.create({
   headerTitle: {
     fontSize: 22,
     fontWeight: "700",
-    color: "#1e293b",
     marginBottom: 2,
   },
   headerSubtitle: {
     fontSize: 13,
-    color: "#64748b",
   },
   syncButton: {
     flexDirection: "row",
     alignItems: "center",
-    backgroundColor: "#eff6ff",
     paddingHorizontal: 14,
     paddingVertical: 9,
     borderRadius: 10,
     marginLeft: 12,
   },
   syncButtonText: {
-    color: "#3b82f6",
     fontSize: 14,
     fontWeight: "600",
     marginLeft: 6,
@@ -379,15 +412,12 @@ const styles = StyleSheet.create({
   errorBanner: {
     flexDirection: "row",
     alignItems: "center",
-    backgroundColor: "#fef2f2",
-    borderColor: "#fecaca",
     borderWidth: 1,
     borderRadius: 10,
     padding: 12,
     marginBottom: 14,
   },
   errorText: {
-    color: "#dc2626",
     fontSize: 13,
     marginLeft: 8,
     flex: 1,
@@ -396,12 +426,12 @@ const styles = StyleSheet.create({
     paddingBottom: 32,
   },
   accountCard: {
-    backgroundColor: "#ffffff",
     borderRadius: 16,
     padding: 16,
     marginBottom: 12,
     flexDirection: "row",
     alignItems: "center",
+    borderWidth: 1,
     shadowColor: "#000",
     shadowOffset: { width: 0, height: 1 },
     shadowOpacity: 0.05,
@@ -412,7 +442,6 @@ const styles = StyleSheet.create({
     width: 46,
     height: 46,
     borderRadius: 12,
-    backgroundColor: "#eff6ff",
     justifyContent: "center",
     alignItems: "center",
     marginRight: 14,
@@ -424,12 +453,10 @@ const styles = StyleSheet.create({
   accountName: {
     fontSize: 16,
     fontWeight: "600",
-    color: "#1e293b",
     marginBottom: 3,
   },
   bankSubtext: {
     fontSize: 13,
-    color: "#64748b",
   },
   rightSection: {
     flexDirection: "row",
@@ -441,14 +468,9 @@ const styles = StyleSheet.create({
   balanceText: {
     fontSize: 17,
     fontWeight: "700",
-    color: "#059669",
-  },
-  negativeBalanceText: {
-    color: "#dc2626",
   },
   availableText: {
     fontSize: 11,
-    color: "#64748b",
     marginTop: 2,
   },
   arrowHitBox: {
@@ -461,7 +483,6 @@ const styles = StyleSheet.create({
     width: 72,
     height: 72,
     borderRadius: 36,
-    backgroundColor: "#eff6ff",
     justifyContent: "center",
     alignItems: "center",
     marginBottom: 16,
@@ -474,20 +495,17 @@ const styles = StyleSheet.create({
   emptyTitle: {
     fontSize: 19,
     fontWeight: "700",
-    color: "#1e293b",
     marginTop: 12,
     marginBottom: 8,
     textAlign: "center",
   },
   emptySubtitle: {
     fontSize: 14,
-    color: "#64748b",
     textAlign: "center",
     lineHeight: 21,
     marginBottom: 22,
   },
   primaryButton: {
-    backgroundColor: "#3b82f6",
     borderRadius: 12,
     paddingVertical: 13,
     paddingHorizontal: 22,
@@ -502,7 +520,6 @@ const styles = StyleSheet.create({
     marginLeft: 8,
   },
   linkBankButton: {
-    backgroundColor: "#ffffff",
     borderRadius: 14,
     paddingVertical: 15,
     paddingHorizontal: 16,
@@ -510,11 +527,9 @@ const styles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "center",
     borderWidth: 1,
-    borderColor: "#bfdbfe",
     marginTop: 6,
   },
   linkBankButtonText: {
-    color: "#3b82f6",
     fontSize: 15,
     fontWeight: "600",
     marginLeft: 8,
@@ -522,11 +537,9 @@ const styles = StyleSheet.create({
   loadingText: {
     marginTop: 14,
     fontSize: 14,
-    color: "#64748b",
   },
   detailScroll: {
     flex: 1,
-    backgroundColor: "#f8fafc",
   },
   detailScrollContent: {
     padding: 20,
@@ -535,13 +548,11 @@ const styles = StyleSheet.create({
   backPillButton: {
     flexDirection: "row",
     alignItems: "center",
-    backgroundColor: "#eff6ff",
     paddingHorizontal: 16,
     paddingVertical: 10,
     borderRadius: 10,
   },
   backPillText: {
-    color: "#3b82f6",
     fontSize: 14,
     fontWeight: "600",
     marginLeft: 6,
@@ -554,13 +565,11 @@ const styles = StyleSheet.create({
     paddingVertical: 4,
   },
   backRowText: {
-    color: "#3b82f6",
     fontSize: 15,
     fontWeight: "600",
     marginLeft: 4,
   },
   netCard: {
-    backgroundColor: "#1a365d",
     borderRadius: 18,
     padding: 22,
     marginBottom: 24,
@@ -583,18 +592,15 @@ const styles = StyleSheet.create({
     borderRadius: 8,
   },
   bankBadgeText: {
-    color: "#ffffff",
     fontSize: 13,
     fontWeight: "700",
   },
   typeBadge: {
-    backgroundColor: "rgba(59, 130, 246, 0.35)",
     paddingHorizontal: 10,
     paddingVertical: 4,
     borderRadius: 8,
   },
   typeBadgeText: {
-    color: "#bfdbfe",
     fontSize: 11,
     fontWeight: "700",
     letterSpacing: 0.5,
@@ -602,12 +608,10 @@ const styles = StyleSheet.create({
   detailAccountName: {
     fontSize: 22,
     fontWeight: "700",
-    color: "#ffffff",
     marginBottom: 4,
   },
   detailAccountNumber: {
     fontSize: 14,
-    color: "#94a3b8",
     marginBottom: 20,
   },
   netBalanceBox: {
@@ -617,7 +621,6 @@ const styles = StyleSheet.create({
   },
   netLabel: {
     fontSize: 12,
-    color: "#94a3b8",
     textTransform: "uppercase",
     letterSpacing: 0.6,
     marginBottom: 6,
@@ -625,14 +628,9 @@ const styles = StyleSheet.create({
   netAmount: {
     fontSize: 34,
     fontWeight: "800",
-    color: "#ffffff",
-  },
-  negativeNetAmount: {
-    color: "#fca5a5",
   },
   availableAmount: {
     fontSize: 13,
-    color: "#cbd5e1",
     marginTop: 6,
   },
   transactionsSection: {
@@ -647,10 +645,8 @@ const styles = StyleSheet.create({
   sectionTitle: {
     fontSize: 19,
     fontWeight: "700",
-    color: "#1e293b",
   },
   comingSoonPill: {
-    backgroundColor: "#e2e8f0",
     paddingHorizontal: 10,
     paddingVertical: 4,
     borderRadius: 8,
@@ -658,22 +654,18 @@ const styles = StyleSheet.create({
   comingSoonText: {
     fontSize: 11,
     fontWeight: "600",
-    color: "#475569",
   },
   emptyTransactionsBox: {
-    backgroundColor: "#ffffff",
     borderRadius: 16,
     padding: 32,
     alignItems: "center",
     borderWidth: 1,
-    borderColor: "#e2e8f0",
     borderStyle: "dashed",
   },
   emptyTransactionsIcon: {
     width: 60,
     height: 60,
     borderRadius: 30,
-    backgroundColor: "#f1f5f9",
     justifyContent: "center",
     alignItems: "center",
     marginBottom: 14,
@@ -681,13 +673,11 @@ const styles = StyleSheet.create({
   emptyTransactionsTitle: {
     fontSize: 16,
     fontWeight: "700",
-    color: "#334155",
     marginBottom: 6,
     textAlign: "center",
   },
   emptyTransactionsSubtitle: {
     fontSize: 14,
-    color: "#64748b",
     textAlign: "center",
     lineHeight: 20,
   },
