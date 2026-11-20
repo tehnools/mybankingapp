@@ -1,6 +1,7 @@
 import React from "react"
-import { View, Text, StyleSheet } from "react-native"
+import { View, StyleSheet } from "react-native"
 import { Ionicons } from "@expo/vector-icons"
+import { Text } from "../components/app-text"
 import { useAkahuConnection } from "../hooks/use-akahu-data"
 
 const HomeScreen = (): React.JSX.Element => {

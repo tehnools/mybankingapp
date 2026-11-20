@@ -1,10 +1,11 @@
 import React from "react"
-import { AppState, View, Text, StyleSheet, TouchableOpacity, ActivityIndicator } from "react-native"
+import { AppState, View, StyleSheet, TouchableOpacity, ActivityIndicator } from "react-native"
 import { Tabs } from "expo-router"
 import { QueryClient, QueryClientProvider, focusManager } from "@tanstack/react-query"
 import { SafeAreaProvider } from "react-native-safe-area-context"
 import { StatusBar } from "expo-status-bar"
 import { Ionicons } from "@expo/vector-icons"
+import { Text } from "../components/app-text"
 import { useAkahuStoredSettings, useAutoBiometricUnlock, useUnlockAppSession } from "../hooks/use-akahu-data"
 import { useAppStore } from "../lib/store"
 

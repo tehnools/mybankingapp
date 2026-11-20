@@ -1,7 +1,6 @@
 import React from "react"
 import {
   View,
-  Text,
   StyleSheet,
   TextInput,
   TouchableOpacity,
@@ -13,6 +12,7 @@ import {
   Platform,
 } from "react-native"
 import { Ionicons } from "@expo/vector-icons"
+import { Text } from "../components/app-text"
 import { AkahuAuth } from "../lib/akahu-auth"
 import {
   useAkahuConnection,
@@ -290,9 +290,7 @@ const SettingsScreen = (): React.JSX.Element => {
                 disabled={wipeMutation.isPending}
               >
                 <Ionicons name="finger-print" size={18} color="#ffffff" />
-                <Text style={styles.modalConfirmText}>
-                  {wipeMutation.isPending ? "Wiping..." : "Verify & Wipe Tokens"}
-                </Text>
+                <Text style={styles.modalConfirmText}>{wipeMutation.isPending ? "Wiping..." : "Wipe Tokens"}</Text>
               </TouchableOpacity>
             </View>
           </View>
