@@ -6,6 +6,7 @@ import type { AppStoreState, LockScreenState, PinFlowMode, SettingsFormState } f
 export const useAppStore = create<AppStoreState>((set) => ({
   accounts: [],
   transactions: [],
+  selectedAccountId: null,
   isConnected: false,
   // Starts false on a cold app launch (when app was closed/terminated and reopened),
   // and stays true across background <-> foreground transitions while the app remains open.
@@ -15,6 +16,7 @@ export const useAppStore = create<AppStoreState>((set) => ({
   isReturningFromBackground: false,
   setAccounts: (accounts) => set({ accounts }),
   setTransactions: (transactions) => set({ transactions }),
+  setSelectedAccountId: (selectedAccountId) => set({ selectedAccountId }),
   setConnected: (connected) => set({ isConnected: connected }),
   setSessionUnlocked: (unlocked) => set({ isSessionUnlocked: unlocked }),
   setAppStateTransition: (nextState: AppStateStatus) =>

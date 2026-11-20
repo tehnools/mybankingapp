@@ -12,6 +12,19 @@ export interface BankAccount {
   lastRefreshed?: string
 }
 
+export interface BankAccountDbRow {
+  id: string
+  name: string
+  bank: string
+  account_number: string
+  balance: number
+  available_balance: number | null
+  type: BankAccount["type"]
+  status: "ACTIVE" | "INACTIVE" | null
+  last_refreshed: string | null
+  updated_at: number
+}
+
 export interface Transaction {
   id: string
   accountId: string
@@ -34,6 +47,7 @@ export interface Transaction {
 export interface AppStoreState {
   accounts: BankAccount[]
   transactions: Transaction[]
+  selectedAccountId: string | null
   isConnected: boolean
   isSessionUnlocked: boolean
   appState: AppStateStatus
@@ -41,6 +55,7 @@ export interface AppStoreState {
   isReturningFromBackground: boolean
   setAccounts: (accounts: BankAccount[]) => void
   setTransactions: (transactions: Transaction[]) => void
+  setSelectedAccountId: (accountId: string | null) => void
   setConnected: (connected: boolean) => void
   setSessionUnlocked: (unlocked: boolean) => void
   setAppStateTransition: (nextState: AppStateStatus) => void

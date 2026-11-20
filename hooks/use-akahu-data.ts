@@ -8,6 +8,7 @@ import {
 } from "@tanstack/react-query"
 import { akahuClient } from "../lib/akahu-client"
 import { AkahuAuth } from "../lib/akahu-auth"
+import { clearAccountsDb, getCachedAccountByIdFromDb, getCachedAccountsFromDb, upsertAccountsToDb } from "../lib/db"
 import { SecurityManager } from "../lib/security"
 import { useAppStore, useLockScreenStore, useSettingsFormStore } from "../lib/store"
 import type {
@@ -52,9 +53,7 @@ const extractAndPasteTokensFromClipboard = async (): Promise<AkahuClipboardPaste
   }
 }
 
-export const useAutoPasteAkahuClipboard = (
-  enabled: boolean,
-): UseQueryResult<AkahuClipboardPasteResult, Error> => {
+export const useAutoPasteAkahuClipboard = (enabled: boolean): UseQueryResult<AkahuClipboardPasteResult, Error> => {
   return useQuery<AkahuClipboardPasteResult, Error>({
     queryKey: ["akahu", "clipboard-auto-paste", enabled],
     queryFn: extractAndPasteTokensFromClipboard,
@@ -384,6 +383,18 @@ export const useVerifyPinToDisableBiometrics = (): UseMutationResult<boolean, Er
   })
 }
 
+const mapRawAccountToBankAccount = (account: AkahuRawAccount): BankAccount => ({
+  id: account._id,
+  name: account.name,
+  bank: account.connection?.name || "NZ Bank",
+  accountNumber: account.formatted_account || "••••",
+  balance: account.balance?.current ?? 0,
+  availableBalance: account.balance?.available,
+  type: mapAkahuAccountType(account.type),
+  status: account.status,
+  lastRefreshed: account.refreshed?.balance || account.refreshed?.transactions,
+})
+
 export const useWipeAkahuTokens = (): UseMutationResult<boolean, Error, void> => {
   const queryClient = useQueryClient()
   const setSessionUnlocked = useAppStore((s) => s.setSessionUnlocked)
@@ -393,6 +404,7 @@ export const useWipeAkahuTokens = (): UseMutationResult<boolean, Error, void> =>
   return useMutation<boolean, Error, void>({
     mutationFn: async (): Promise<boolean> => {
       await SecurityManager.clearAllSecureData()
+      await clearAccountsDb()
       await AkahuAuth.disconnect()
       resetForm()
       setConnected(false)
@@ -411,26 +423,41 @@ export const useAkahuAccounts = (): UseQueryResult<BankAccount[], Error> => {
   return useQuery<BankAccount[], Error>({
     queryKey: ["akahu", "accounts"],
     queryFn: async (): Promise<BankAccount[]> => {
-      const response = await akahuClient.getAccounts()
-
-      const accounts: BankAccount[] =
-        response.items?.map(
-          (account: AkahuRawAccount): BankAccount => ({
-            id: account._id,
-            name: account.name,
-            bank: account.connection?.name || "NZ Bank",
-            accountNumber: account.formatted_account || "••••",
-            balance: account.balance?.current ?? 0,
-            availableBalance: account.balance?.available,
-            type: mapAkahuAccountType(account.type),
-            status: account.status,
-            lastRefreshed: account.refreshed?.balance || account.refreshed?.transactions,
-          }),
-        ) || []
-
-      return accounts
+      try {
+        const response = await akahuClient.getAccounts()
+        const accounts: BankAccount[] = (response.items || []).map(mapRawAccountToBankAccount)
+        await upsertAccountsToDb(accounts)
+        return await getCachedAccountsFromDb()
+      } catch (error) {
+        const cached = await getCachedAccountsFromDb()
+        if (cached.length > 0) {
+          return cached
+        }
+        throw error
+      }
     },
     enabled: !!connection?.connected,
+  })
+}
+
+export const useAkahuAccountById = (accountId?: string): UseQueryResult<BankAccount | null, Error> => {
+  const { data: connection } = useAkahuConnection()
+
+  return useQuery<BankAccount | null, Error>({
+    queryKey: ["akahu", "account", accountId],
+    queryFn: async (): Promise<BankAccount | null> => {
+      if (!accountId) return null
+
+      const cached = await getCachedAccountByIdFromDb(accountId)
+      if (cached) {
+        return cached
+      }
+
+      const response = await akahuClient.getAccountById(accountId)
+      if (!response?.item) return null
+      return mapRawAccountToBankAccount(response.item)
+    },
+    enabled: Boolean(accountId) && !!connection?.connected,
   })
 }
 
@@ -439,10 +466,15 @@ export const useRefreshAkahu = (): UseMutationResult<{ success: boolean }, Error
 
   return useMutation<{ success: boolean }, Error, string | undefined>({
     mutationFn: async (accountOrConnectionId?: string): Promise<{ success: boolean }> => {
-      return await akahuClient.refreshAccounts(accountOrConnectionId)
+      const refreshResult = await akahuClient.refreshAccounts(accountOrConnectionId)
+      const response = await akahuClient.getAccounts()
+      const accounts: BankAccount[] = (response.items || []).map(mapRawAccountToBankAccount)
+      await upsertAccountsToDb(accounts)
+      return refreshResult
     },
-    onSuccess: (): void => {
-      queryClient.invalidateQueries({ queryKey: ["akahu", "accounts"] })
+    onSuccess: async (): Promise<void> => {
+      await queryClient.invalidateQueries({ queryKey: ["akahu", "accounts"] })
+      await queryClient.invalidateQueries({ queryKey: ["akahu", "account"] })
     },
   })
 }

@@ -5,7 +5,7 @@ Akahu charges commercial fees for multi-user OAuth apps, **but provides free "Pe
 By guiding each user to sign up on Akahu as a Personal App developer, accept Akahu's developer agreement, and bring their own `app_token_...` and `user_token_...` into the mobile app:
 - **$0 API fees** for you and your users.
 - **$0 server costs** (the mobile app calls `https://api.akahu.io/v1` directly from the phone with no backend needed).
-- **100% on-device privacy** (tokens and salted PIN hash live inside hardware-backed `expo-secure-store`).
+- **100% on-device privacy** (tokens and salted PIN hash live inside hardware-backed `expo-secure-store`, and bank accounts are cached locally in `expo-sqlite`).
 
 ---
 
@@ -13,43 +13,36 @@ By guiding each user to sign up on Akahu as a Personal App developer, accept Aka
 
 **Goal:** Get into the barebones app shell (`Home`, `Accounts`, `Settings`), set up Akahu tokens with clipboard auto-paste, and secure the app with a mandatory 6-digit PIN + optional biometric uplift.
 
-### 1. Minimal Bottom Tab Navigation (`app/_layout.tsx`)
-- [x] **Home (`app/index.tsx`)**: Minimal landing page displaying Akahu connection status.
-- [x] **Accounts (`app/accounts.tsx`)**: Placeholder screen ready for Phase 2.
-- [x] **Settings (`app/settings.tsx`)**: Akahu token entry, clipboard auto-paste, mandatory 6-digit PIN setup, locked credential form, and optional biometric toggle.
-
-### 2. Akahu Token Setup & Auto-Paste (`hooks/use-akahu-data.ts` & `app/settings.tsx`)
-- [x] **External Links**: Quick buttons to open `https://my.akahu.nz` (link banks) and `https://my.akahu.nz/developers` (accept Developer Terms & create Personal App).
-- [x] **Clipboard Auto-Paste (`expo-clipboard`)**: Automatically detects `app_token_...` and `user_token_...` from the clipboard when returning to the app (plus manual one-tap Paste button).
-- [x] **Live Verification**: Validates both tokens against `GET https://api.akahu.io/v1/me` and stores the user profile.
-
-### 3. Mandatory 6-Digit PIN First → Optional Biometric Uplift (`lib/security.ts`, `components/pin-pad.tsx`, `hooks/use-app-state.ts`)
-- [x] **Mandatory 6-Digit PIN**: Created & confirmed when first saving Akahu tokens; stored as a random-salted SHA-256 hash in `expo-secure-store`.
-- [x] **Optional Biometric Uplift**: Immediately offered after setting the 6-digit PIN if the device has biometrics enrolled.
-- [x] **Locked Credential Form**: Tokens are masked and read-only once saved; tapping **Edit** tries biometrics first (if enabled) and falls back to the 6-digit PIN pad.
-- [x] **Graceful OS Biometrics Fallback (No Token Wipe)**: If the user removes biometrics from Android/iOS settings or toggles Biometric Unlock off in Settings, biometrics are cleanly disabled while tokens and the mandatory 6-digit PIN stay intact.
-- [x] **Cold-Launch-Only Lock (`useAppLifecycleState`)**: Moving between background and foreground keeps the session unlocked; only a full app close & reopen triggers the lock screen (Biometrics first, 6-digit PIN pad fallback).
-- [x] **Explicit Wipe Option**: Separate **"Clear Saved Tokens & Reset PIN"** confirmation modal in Settings.
+- [x] Minimal Bottom Tab Navigation (`Home`, `Accounts`, `Settings`)
+- [x] Akahu Token Setup & Clipboard Auto-Paste (`expo-clipboard`)
+- [x] Mandatory 6-Digit PIN First → Optional Biometric Uplift
+- [x] Non-destructive OS Biometrics Fallback & Cold-Launch-Only Lock (`useAppLifecycleState`)
 
 ---
 
-## Phase 2: Add & List Connected Bank Accounts (`app/accounts.tsx`) — Next
+## Phase 2: Local SQLite Bank Accounts List & Account Detail Page ✅ (Current)
 
-**Goal:** Connect the **Accounts** tab to Akahu's `/v1/accounts` and `/v1/refresh` endpoints.
+**Goal:** Sync connected NZ bank accounts from Akahu (`GET /v1/accounts`) into local **`expo-sqlite`** storage, list them in the **Accounts** tab with a side arrow (`>`), and open a dedicated **Bank Account Page** showing the account's net balance and an empty space reserved for transactions below.
 
-1. **List Connected Accounts (`GET /v1/accounts`)**:
-   - Display bank name, account name, masked account number, current balance, and available balance using `useAkahuAccounts()`.
-2. **Add / Link More Banks & Sync**:
-   - Button to open `https://my.akahu.nz` to link additional NZ bank accounts.
-   - **Sync / Refresh** button (`POST /v1/refresh` via `useRefreshAkahu()`) and pull-to-refresh to update balances.
+1. **Local SQLite Storage (`lib/db.ts` via `expo-sqlite`)**:
+   - Store and query `bank_accounts` locally on device (`id`, `name`, `bank`, `account_number`, `balance`, `available_balance`, `type`, `status`, `last_refreshed`, `updated_at`).
+   - Clear the local SQLite `bank_accounts` table whenever tokens are wiped.
+2. **Accounts List Tab (`app/accounts.tsx`)**:
+   - Fetch accounts from Akahu and persist them in `expo-sqlite` via TanStack Query (`useAkahuAccounts()`).
+   - Render each bank account card with its bank name, account name, account number, balance, and a **side arrow (`>`)**.
+   - Provide **Sync** (`POST /v1/refresh` + SQLite upsert) and **Link Bank on Akahu** (`https://my.akahu.nz`) actions.
+3. **Individual Bank Account Detail Page (`app/account/[id].tsx`)**:
+   - Clicking an account card's `>` row navigates to `/account/[id]`.
+   - Displays the **Net Balance Card** for that specific bank account at the top (Current Net Balance, Available Balance, Bank & Account Number).
+   - Reserves a **Transactions Section** below (currently showing a clean empty state until transaction syncing is plugged in).
 
 ---
 
-## Phase 3: Home Dashboard Summary (`app/index.tsx`)
+## Phase 3: Plug In Account Transactions (`GET /v1/accounts/{id}/transactions`) — Next
 
-**Goal:** Show a clean total net balance card across connected NZ bank accounts and quick navigation to Accounts and Settings.
+**Goal:** Store and list transactions in `expo-sqlite` inside the reserved transactions section on the Bank Account Detail Page (`app/account/[id].tsx`).
 
 ---
 
-## Phase 4: Future Enhancements
-- Transactions list (`GET /v1/transactions` and `/v1/accounts/{id}/transactions`), search/filtering, and spending insights once Phases 1–3 are tested end-to-end.
+## Phase 4: Home Dashboard & Spending Insights
+- Aggregate net worth and spending summaries on the **Home** tab once accounts and transactions are working end-to-end.
