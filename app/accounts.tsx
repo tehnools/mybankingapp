@@ -1,15 +1,18 @@
 import React from "react"
-import { View, StyleSheet, FlatList, TouchableOpacity, ActivityIndicator, ScrollView } from "react-native"
+import { View, StyleSheet, FlatList, TouchableOpacity, ActivityIndicator, ScrollView, Image } from "react-native"
 import { router } from "expo-router"
 import { Ionicons } from "@expo/vector-icons"
 import { Text } from "../components/app-text"
 import { AkahuAuth } from "../lib/akahu-auth"
+import { getFallbackBankColor, getReadableTextColor } from "../lib/bank-branding"
 import { useAppStore } from "../lib/store"
 import { useAppTheme } from "../lib/theme"
 import {
   useAkahuAccountById,
   useAkahuAccounts,
   useAkahuConnection,
+  useAkahuConnectionById,
+  useAkahuConnectionsMap,
   useRefreshAkahu,
 } from "../hooks/use-akahu-data"
 import type { BankAccount } from "../types"
@@ -43,15 +46,10 @@ const formatCurrency = (amount: number): string => {
   return isNegative ? `-${formatted}` : formatted
 }
 
-const AccountDetailView = ({
-  accountId,
-  onBack,
-}: {
-  accountId: string
-  onBack: () => void
-}): React.JSX.Element => {
+const AccountDetailView = ({ accountId, onBack }: { accountId: string; onBack: () => void }): React.JSX.Element => {
   const { colors, dark } = useAppTheme()
   const { data: account, isLoading } = useAkahuAccountById(accountId)
+  const { data: bankConnection } = useAkahuConnectionById(account?.connectionId)
 
   if (isLoading) {
     return (
@@ -75,6 +73,17 @@ const AccountDetailView = ({
     )
   }
 
+  // Use the eyedropped main logo color from SQLite (with fallback to known NZ bank brand color or theme header)
+  const brandColor = bankConnection?.primaryColor || getFallbackBankColor(account.bank)
+  const cardBackground = brandColor || (dark ? colors.card : colors.headerBackground)
+  const cardTextColor = brandColor ? getReadableTextColor(brandColor) : colors.headerText
+  const isLightCardText = cardTextColor === "#FFFFFF"
+  const cardMutedTextColor = isLightCardText ? "rgba(255, 255, 255, 0.78)" : "rgba(28, 25, 23, 0.72)"
+  const cardDividerColor = isLightCardText ? "rgba(255, 255, 255, 0.18)" : "rgba(28, 25, 23, 0.14)"
+  const badgeOverlayBg = isLightCardText ? "rgba(255, 255, 255, 0.18)" : "rgba(28, 25, 23, 0.12)"
+
+  const logoSource = bankConnection?.logoUri || bankConnection?.logoUrl
+
   return (
     <ScrollView
       style={[styles.detailScroll, { backgroundColor: colors.background }]}
@@ -88,53 +97,48 @@ const AccountDetailView = ({
         </Text>
       </TouchableOpacity>
 
-      {/* Net Balance Card for This Bank Account */}
+      {/* Net Balance Card Styled with Eyedropped Bank Logo Brand Color */}
       <View
         style={[
           styles.netCard,
           {
-            backgroundColor: dark ? colors.card : colors.headerBackground,
-            borderColor: dark ? colors.border : "transparent",
-            borderWidth: dark ? 1 : 0,
+            backgroundColor: cardBackground,
+            borderColor: !brandColor && dark ? colors.border : "transparent",
+            borderWidth: !brandColor && dark ? 1 : 0,
           },
         ]}
       >
         <View style={styles.bankBadgeRow}>
-          <View style={styles.bankBadge}>
-            <Text style={[styles.bankBadgeText, { color: colors.headerText }]} preventOrphans={false}>
+          <View style={[styles.bankBadge, { backgroundColor: badgeOverlayBg }]}>
+            {logoSource && <Image source={{ uri: logoSource }} style={styles.detailBankLogo} resizeMode="contain" />}
+            <Text style={[styles.bankBadgeText, { color: cardTextColor }]} preventOrphans={false}>
               {account.bank}
             </Text>
           </View>
-          <View style={[styles.typeBadge, { backgroundColor: colors.primarySoft }]}>
-            <Text style={[styles.typeBadgeText, { color: colors.primary }]} preventOrphans={false}>
+          <View style={[styles.typeBadge, { backgroundColor: badgeOverlayBg }]}>
+            <Text style={[styles.typeBadgeText, { color: cardTextColor }]} preventOrphans={false}>
               {account.type.toUpperCase()}
             </Text>
           </View>
         </View>
 
-        <Text style={[styles.detailAccountName, { color: colors.headerText }]} preventOrphans={false}>
+        <Text style={[styles.detailAccountName, { color: cardTextColor }]} preventOrphans={false}>
           {account.name}
         </Text>
-        <Text style={[styles.detailAccountNumber, { color: colors.muted }]} preventOrphans={false}>
+        <Text style={[styles.detailAccountNumber, { color: cardMutedTextColor }]} preventOrphans={false}>
           {account.accountNumber}
         </Text>
 
-        <View style={styles.netBalanceBox}>
-          <Text style={[styles.netLabel, { color: colors.muted }]} preventOrphans={false}>
+        <View style={[styles.netBalanceBox, { borderTopColor: cardDividerColor }]}>
+          <Text style={[styles.netLabel, { color: cardMutedTextColor }]} preventOrphans={false}>
             Net Account Balance
           </Text>
-          <Text
-            style={[
-              styles.netAmount,
-              { color: account.balance < 0 ? colors.negative : colors.headerText },
-            ]}
-            preventOrphans={false}
-          >
+          <Text style={[styles.netAmount, { color: cardTextColor }]} preventOrphans={false}>
             {formatCurrency(account.balance)}
           </Text>
 
           {account.availableBalance !== undefined && (
-            <Text style={[styles.availableAmount, { color: colors.muted }]} preventOrphans={false}>
+            <Text style={[styles.availableAmount, { color: cardMutedTextColor }]} preventOrphans={false}>
               Available Balance: {formatCurrency(account.availableBalance)}
             </Text>
           )}
@@ -154,12 +158,7 @@ const AccountDetailView = ({
           </View>
         </View>
 
-        <View
-          style={[
-            styles.emptyTransactionsBox,
-            { backgroundColor: colors.card, borderColor: colors.border },
-          ]}
-        >
+        <View style={[styles.emptyTransactionsBox, { backgroundColor: colors.card, borderColor: colors.border }]}>
           <View style={[styles.emptyTransactionsIcon, { backgroundColor: colors.primarySoft }]}>
             <Ionicons name="receipt-outline" size={30} color={colors.primary} />
           </View>
@@ -178,6 +177,7 @@ const AccountsScreen = (): React.JSX.Element => {
   const { colors } = useAppTheme()
   const { data: connectionStatus, isLoading: isCheckingConnection } = useAkahuConnection()
   const { data: accounts, isLoading: isLoadingAccounts, refetch, isRefetching, error } = useAkahuAccounts()
+  const { data: connectionsMap } = useAkahuConnectionsMap()
   const refreshMutation = useRefreshAkahu()
 
   const selectedAccountId = useAppStore((s) => s.selectedAccountId)
@@ -205,52 +205,58 @@ const AccountsScreen = (): React.JSX.Element => {
     setSelectedAccountId(accountId)
   }
 
-  const renderAccountItem = ({ item }: { item: BankAccount }): React.JSX.Element => (
-    <TouchableOpacity
-      style={[styles.accountCard, { backgroundColor: colors.card, borderColor: colors.border }]}
-      activeOpacity={0.7}
-      onPress={(): void => handleOpenAccount(item.id)}
-    >
-      <View style={[styles.iconContainer, { backgroundColor: colors.primarySoft }]}>
-        <Ionicons name={getAccountIcon(item.type)} size={24} color={colors.primary} />
-      </View>
+  const renderAccountItem = ({ item }: { item: BankAccount }): React.JSX.Element => {
+    const conn = item.connectionId ? connectionsMap?.[item.connectionId] : undefined
+    const logoSource = conn?.logoUri || conn?.logoUrl
 
-      <View style={styles.accountDetails}>
-        <Text style={[styles.accountName, { color: colors.text }]} preventOrphans={false}>
-          {item.name}
-        </Text>
-        <Text style={[styles.bankSubtext, { color: colors.subtext }]} preventOrphans={false}>
-          {item.bank} • {item.accountNumber}
-        </Text>
-      </View>
-
-      <View style={styles.rightSection}>
-        <View style={styles.balanceColumn}>
-          <Text
-            style={[
-              styles.balanceText,
-              { color: item.balance < 0 ? colors.negative : colors.positive },
-            ]}
-            preventOrphans={false}
-          >
-            {formatCurrency(item.balance)}
-          </Text>
-          {item.availableBalance !== undefined && item.availableBalance !== item.balance && (
-            <Text style={[styles.availableText, { color: colors.subtext }]} preventOrphans={false}>
-              Avail: {formatCurrency(item.availableBalance)}
-            </Text>
+    return (
+      <TouchableOpacity
+        style={[styles.accountCard, { backgroundColor: colors.card, borderColor: colors.border }]}
+        activeOpacity={0.7}
+        onPress={(): void => handleOpenAccount(item.id)}
+      >
+        <View style={[styles.iconContainer, { backgroundColor: colors.primarySoft }]}>
+          {logoSource ? (
+            <Image source={{ uri: logoSource }} style={styles.listBankLogo} resizeMode="contain" />
+          ) : (
+            <Ionicons name={getAccountIcon(item.type)} size={24} color={colors.primary} />
           )}
         </View>
-        <TouchableOpacity
-          style={styles.arrowHitBox}
-          onPress={(): void => handleOpenAccount(item.id)}
-          hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
-        >
-          <Ionicons name="chevron-forward" size={22} color={colors.primary} />
-        </TouchableOpacity>
-      </View>
-    </TouchableOpacity>
-  )
+
+        <View style={styles.accountDetails}>
+          <Text style={[styles.accountName, { color: colors.text }]} preventOrphans={false}>
+            {item.name}
+          </Text>
+          <Text style={[styles.bankSubtext, { color: colors.subtext }]} preventOrphans={false}>
+            {item.bank} • {item.accountNumber}
+          </Text>
+        </View>
+
+        <View style={styles.rightSection}>
+          <View style={styles.balanceColumn}>
+            <Text
+              style={[styles.balanceText, { color: item.balance < 0 ? colors.negative : colors.positive }]}
+              preventOrphans={false}
+            >
+              {formatCurrency(item.balance)}
+            </Text>
+            {item.availableBalance !== undefined && item.availableBalance !== item.balance && (
+              <Text style={[styles.availableText, { color: colors.subtext }]} preventOrphans={false}>
+                Avail: {formatCurrency(item.availableBalance)}
+              </Text>
+            )}
+          </View>
+          <TouchableOpacity
+            style={styles.arrowHitBox}
+            onPress={(): void => handleOpenAccount(item.id)}
+            hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
+          >
+            <Ionicons name="chevron-forward" size={22} color={colors.primary} />
+          </TouchableOpacity>
+        </View>
+      </TouchableOpacity>
+    )
+  }
 
   if (isCheckingConnection) {
     return (
@@ -348,10 +354,7 @@ const AccountsScreen = (): React.JSX.Element => {
           }
           ListFooterComponent={
             <TouchableOpacity
-              style={[
-                styles.linkBankButton,
-                { backgroundColor: colors.card, borderColor: colors.primary },
-              ]}
+              style={[styles.linkBankButton, { backgroundColor: colors.card, borderColor: colors.primary }]}
               onPress={(): void => {
                 AkahuAuth.openAkahuAccountSetup()
               }}
@@ -445,6 +448,12 @@ const styles = StyleSheet.create({
     justifyContent: "center",
     alignItems: "center",
     marginRight: 14,
+    overflow: "hidden",
+  },
+  listBankLogo: {
+    width: 30,
+    height: 30,
+    borderRadius: 6,
   },
   accountDetails: {
     flex: 1,
@@ -586,10 +595,17 @@ const styles = StyleSheet.create({
     marginBottom: 14,
   },
   bankBadge: {
-    backgroundColor: "rgba(255, 255, 255, 0.15)",
+    flexDirection: "row",
+    alignItems: "center",
     paddingHorizontal: 12,
     paddingVertical: 5,
     borderRadius: 8,
+  },
+  detailBankLogo: {
+    width: 18,
+    height: 18,
+    borderRadius: 4,
+    marginRight: 7,
   },
   bankBadgeText: {
     fontSize: 13,
@@ -616,7 +632,6 @@ const styles = StyleSheet.create({
   },
   netBalanceBox: {
     borderTopWidth: 1,
-    borderTopColor: "rgba(255, 255, 255, 0.12)",
     paddingTop: 16,
   },
   netLabel: {

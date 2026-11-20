@@ -1,7 +1,27 @@
 import type { AppStateStatus } from "react-native"
 
+export interface BankConnection {
+  id: string
+  name: string
+  logoUrl?: string
+  /** Resolved `file://` URI of the locally cached logo (undefined if not cached or unsupported, e.g. SVG) */
+  logoUri?: string
+  /** Dominant brand color eyedropped from the logo, as a hex string */
+  primaryColor?: string
+}
+
+export interface BankConnectionDbRow {
+  id: string
+  name: string
+  logo_url: string | null
+  logo_file: string | null
+  primary_color: string | null
+  updated_at: number
+}
+
 export interface BankAccount {
   id: string
+  connectionId?: string
   name: string
   bank: string
   accountNumber: string
@@ -14,6 +34,7 @@ export interface BankAccount {
 
 export interface BankAccountDbRow {
   id: string
+  connection_id: string | null
   name: string
   bank: string
   account_number: string

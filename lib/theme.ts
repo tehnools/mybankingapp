@@ -12,7 +12,7 @@ export const LightAppTheme: AppTheme = {
     background: "#FAF8F6",
     card: "#FFFFFF",
     text: "#1C1917",
-    subtext: "#68615C",
+    subtext: "#ccc0b7",
     muted: "#A09892",
     border: "#ECE6E1",
     notification: TERRACOTTA_CORAL,
