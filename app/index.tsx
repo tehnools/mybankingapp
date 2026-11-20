@@ -3,7 +3,7 @@ import { View, Text, StyleSheet } from "react-native"
 import { Ionicons } from "@expo/vector-icons"
 import { useAkahuConnection } from "../hooks/use-akahu-data"
 
-export default function HomeScreen() {
+const HomeScreen = (): React.JSX.Element => {
   const { data: connectionStatus, isLoading } = useAkahuConnection()
   const isConnected = !!connectionStatus?.connected
 
@@ -21,6 +21,8 @@ export default function HomeScreen() {
     </View>
   )
 }
+
+export default HomeScreen
 
 const styles = StyleSheet.create({
   container: {

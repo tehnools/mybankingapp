@@ -2,7 +2,7 @@ import React from "react"
 import { View, Text, StyleSheet } from "react-native"
 import { Ionicons } from "@expo/vector-icons"
 
-export default function AccountsScreen() {
+const AccountsScreen = (): React.JSX.Element => {
   return (
     <View style={styles.container}>
       <Ionicons name="card-outline" size={48} color="#94a3b8" />
@@ -13,6 +13,8 @@ export default function AccountsScreen() {
     </View>
   )
 }
+
+export default AccountsScreen
 
 const styles = StyleSheet.create({
   container: {

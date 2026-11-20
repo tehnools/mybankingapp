@@ -22,7 +22,7 @@ const queryClient = new QueryClient({
   },
 })
 
-function BiometricLockGate({ children }: { children: React.ReactNode }) {
+const BiometricLockGate = ({ children }: { children: React.ReactNode }): React.JSX.Element => {
   const { data: storedSettings, isLoading } = useAkahuStoredSettings()
   const isSessionUnlocked = useAppStore((s) => s.isSessionUnlocked)
   const unlockMutation = useUnlockAppSession()
@@ -87,7 +87,7 @@ function BiometricLockGate({ children }: { children: React.ReactNode }) {
   return <>{children}</>
 }
 
-export default function RootLayout() {
+const RootLayout = (): React.JSX.Element => {
   return (
     <SafeAreaProvider>
       <QueryClientProvider client={queryClient}>
@@ -137,6 +137,8 @@ export default function RootLayout() {
     </SafeAreaProvider>
   )
 }
+
+export default RootLayout
 
 const styles = StyleSheet.create({
   lockContainer: {

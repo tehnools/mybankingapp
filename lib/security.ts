@@ -4,7 +4,7 @@ import * as LocalAuthentication from "expo-local-authentication"
 import * as Device from "expo-device"
 
 // Cross-platform secure storage helper (uses SecureStore on iOS/Android, localStorage on web preview)
-async function setItem(key: string, value: string): Promise<void> {
+const setItem = async (key: string, value: string): Promise<void> => {
   if (Platform.OS === "web") {
     if (typeof window !== "undefined" && window.localStorage) {
       window.localStorage.setItem(key, value)
@@ -14,7 +14,7 @@ async function setItem(key: string, value: string): Promise<void> {
   await SecureStore.setItemAsync(key, value)
 }
 
-async function getItem(key: string): Promise<string | null> {
+const getItem = async (key: string): Promise<string | null> => {
   if (Platform.OS === "web") {
     if (typeof window !== "undefined" && window.localStorage) {
       return window.localStorage.getItem(key)
@@ -24,7 +24,7 @@ async function getItem(key: string): Promise<string | null> {
   return await SecureStore.getItemAsync(key)
 }
 
-async function deleteItem(key: string): Promise<void> {
+const deleteItem = async (key: string): Promise<void> => {
   if (Platform.OS === "web") {
     if (typeof window !== "undefined" && window.localStorage) {
       window.localStorage.removeItem(key)

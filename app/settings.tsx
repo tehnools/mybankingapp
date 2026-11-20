@@ -23,13 +23,13 @@ import {
 } from "../hooks/use-akahu-data"
 import { useSettingsFormStore } from "../lib/store"
 
-function maskToken(token: string, prefixLen = 12) {
+const maskToken = (token: string, prefixLen = 12): string => {
   if (!token) return ""
   if (token.length <= prefixLen + 4) return token
   return `${token.slice(0, prefixLen)}••••••••••••${token.slice(-2)}`
 }
 
-export default function SettingsScreen() {
+const SettingsScreen = (): React.JSX.Element => {
   const { data: connectionStatus, isLoading: isCheckingConnection } = useAkahuConnection()
   const { data: storedSettings } = useAkahuStoredSettings()
 
@@ -301,6 +301,8 @@ export default function SettingsScreen() {
     </KeyboardAvoidingView>
   )
 }
+
+export default SettingsScreen
 
 const styles = StyleSheet.create({
   container: {

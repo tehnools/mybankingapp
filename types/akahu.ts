@@ -5,6 +5,19 @@ export interface AkahuUser {
   last_name?: string
 }
 
+export interface AkahuStoredSettings {
+  appToken: string
+  accessToken: string
+  biometricEnabled: boolean
+  hasStoredTokens: boolean
+  wipedDueToMissingBiometrics: boolean
+}
+
+export interface AkahuConnectionStatus {
+  connected: boolean
+  user: AkahuUser | null
+}
+
 export interface AkahuRawAccount {
   _id: string
   _connection: string

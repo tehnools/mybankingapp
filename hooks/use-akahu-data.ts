@@ -1,11 +1,23 @@
-import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query"
+import {
+  useQuery,
+  useMutation,
+  useQueryClient,
+  type UseQueryResult,
+  type UseMutationResult,
+} from "@tanstack/react-query"
 import { akahuClient } from "../lib/akahu-client"
 import { AkahuAuth } from "../lib/akahu-auth"
 import { SecurityManager } from "../lib/security"
 import { useAppStore, useSettingsFormStore } from "../lib/store"
-import type { AkahuRawAccount, BankAccount } from "../types"
+import type {
+  AkahuConnectionStatus,
+  AkahuRawAccount,
+  AkahuStoredSettings,
+  AkahuUser,
+  BankAccount,
+} from "../types"
 
-function mapAkahuAccountType(rawType?: string): BankAccount["type"] {
+const mapAkahuAccountType = (rawType?: string): BankAccount["type"] => {
   switch (rawType?.toUpperCase()) {
     case "CREDITCARD":
     case "CREDIT_CARD":
@@ -25,13 +37,13 @@ function mapAkahuAccountType(rawType?: string): BankAccount["type"] {
   }
 }
 
-export function useAkahuStoredSettings() {
+export const useAkahuStoredSettings = (): UseQueryResult<AkahuStoredSettings, Error> => {
   const resetForm = useSettingsFormStore((s) => s.resetForm)
   const setConnected = useAppStore((s) => s.setConnected)
 
-  return useQuery({
+  return useQuery<AkahuStoredSettings, Error>({
     queryKey: ["akahu", "stored-settings"],
-    queryFn: async () => {
+    queryFn: async (): Promise<AkahuStoredSettings> => {
       const integrity = await SecurityManager.verifyDeviceBiometricIntegrity()
       if (integrity.wipedDueToMissingBiometrics) {
         await akahuClient.clearCredentials()
@@ -63,12 +75,12 @@ export function useAkahuStoredSettings() {
   })
 }
 
-export function useAutoBiometricUnlock(shouldPrompt: boolean) {
+export const useAutoBiometricUnlock = (shouldPrompt: boolean): UseQueryResult<boolean, Error> => {
   const setSessionUnlocked = useAppStore((s) => s.setSessionUnlocked)
 
-  return useQuery({
+  return useQuery<boolean, Error>({
     queryKey: ["akahu", "auto-biometric-unlock", shouldPrompt],
-    queryFn: async () => {
+    queryFn: async (): Promise<boolean> => {
       const result = await SecurityManager.promptBiometric("Authenticate to unlock NZ Money Manager")
       if (!result.success) {
         throw new Error(result.error || "Biometric authentication required to open the app.")
@@ -83,11 +95,11 @@ export function useAutoBiometricUnlock(shouldPrompt: boolean) {
   })
 }
 
-export function useUnlockAppSession() {
+export const useUnlockAppSession = (): UseMutationResult<boolean, Error, void> => {
   const setSessionUnlocked = useAppStore((s) => s.setSessionUnlocked)
 
-  return useMutation({
-    mutationFn: async () => {
+  return useMutation<boolean, Error, void>({
+    mutationFn: async (): Promise<boolean> => {
       const result = await SecurityManager.promptBiometric("Authenticate to unlock NZ Money Manager")
       if (!result.success) {
         throw new Error(result.error || "Biometric unlock failed.")
@@ -98,11 +110,11 @@ export function useUnlockAppSession() {
   })
 }
 
-export function useUnlockCredentialsForm() {
+export const useUnlockCredentialsForm = (): UseMutationResult<boolean, Error, void> => {
   const unlockFormWithTokens = useSettingsFormStore((s) => s.unlockFormWithTokens)
 
-  return useMutation({
-    mutationFn: async () => {
+  return useMutation<boolean, Error, void>({
+    mutationFn: async (): Promise<boolean> => {
       const auth = await SecurityManager.promptBiometric("Authenticate to unlock and edit your Akahu tokens")
       if (!auth.success) {
         throw new Error(auth.error || "Biometric unlock failed.")
@@ -114,10 +126,10 @@ export function useUnlockCredentialsForm() {
   })
 }
 
-export function useAkahuConnection() {
-  return useQuery({
+export const useAkahuConnection = (): UseQueryResult<AkahuConnectionStatus, Error> => {
+  return useQuery<AkahuConnectionStatus, Error>({
     queryKey: ["akahu", "connection"],
-    queryFn: async () => {
+    queryFn: async (): Promise<AkahuConnectionStatus> => {
       try {
         await akahuClient.initialize()
         const { appToken, accessToken } = await akahuClient.getStoredCredentials()
@@ -134,14 +146,24 @@ export function useAkahuConnection() {
   })
 }
 
-export function useSaveAkahuTokens() {
+export const useSaveAkahuTokens = (): UseMutationResult<
+  AkahuUser | undefined,
+  Error,
+  { appToken: string; userToken: string }
+> => {
   const queryClient = useQueryClient()
   const setSessionUnlocked = useAppStore((s) => s.setSessionUnlocked)
   const setConnected = useAppStore((s) => s.setConnected)
   const lockForm = useSettingsFormStore((s) => s.lockForm)
 
-  return useMutation({
-    mutationFn: async ({ appToken, userToken }: { appToken: string; userToken: string }) => {
+  return useMutation<AkahuUser | undefined, Error, { appToken: string; userToken: string }>({
+    mutationFn: async ({
+      appToken,
+      userToken,
+    }: {
+      appToken: string
+      userToken: string
+    }): Promise<AkahuUser | undefined> => {
       if (!appToken.trim() || !userToken.trim()) {
         throw new Error("Please enter both your App ID Token and User Access Token.")
       }
@@ -169,21 +191,21 @@ export function useSaveAkahuTokens() {
       setSessionUnlocked(true)
       return result.user
     },
-    onSuccess: async () => {
+    onSuccess: async (): Promise<void> => {
       await queryClient.invalidateQueries({ queryKey: ["akahu"] })
     },
   })
 }
 
-export function useWipeAkahuTokens() {
+export const useWipeAkahuTokens = (): UseMutationResult<boolean, Error, void> => {
   const queryClient = useQueryClient()
   const setSessionUnlocked = useAppStore((s) => s.setSessionUnlocked)
   const setConnected = useAppStore((s) => s.setConnected)
   const resetForm = useSettingsFormStore((s) => s.resetForm)
   const setShowWipeModal = useSettingsFormStore((s) => s.setShowWipeModal)
 
-  return useMutation({
-    mutationFn: async () => {
+  return useMutation<boolean, Error, void>({
+    mutationFn: async (): Promise<boolean> => {
       const auth = await SecurityManager.promptBiometric(
         "Authenticate to turn off biometrics and wipe your Akahu tokens",
       )
@@ -200,32 +222,34 @@ export function useWipeAkahuTokens() {
       setSessionUnlocked(false)
       return true
     },
-    onSuccess: async () => {
+    onSuccess: async (): Promise<void> => {
       await queryClient.invalidateQueries({ queryKey: ["akahu"] })
     },
   })
 }
 
-export function useAkahuAccounts() {
+export const useAkahuAccounts = (): UseQueryResult<BankAccount[], Error> => {
   const { data: connection } = useAkahuConnection()
 
-  return useQuery({
+  return useQuery<BankAccount[], Error>({
     queryKey: ["akahu", "accounts"],
-    queryFn: async () => {
+    queryFn: async (): Promise<BankAccount[]> => {
       const response = await akahuClient.getAccounts()
 
       const accounts: BankAccount[] =
-        response.items?.map((account: AkahuRawAccount) => ({
-          id: account._id,
-          name: account.name,
-          bank: account.connection?.name || "NZ Bank",
-          accountNumber: account.formatted_account || "••••",
-          balance: account.balance?.current ?? 0,
-          availableBalance: account.balance?.available,
-          type: mapAkahuAccountType(account.type),
-          status: account.status,
-          lastRefreshed: account.refreshed?.balance || account.refreshed?.transactions,
-        })) || []
+        response.items?.map(
+          (account: AkahuRawAccount): BankAccount => ({
+            id: account._id,
+            name: account.name,
+            bank: account.connection?.name || "NZ Bank",
+            accountNumber: account.formatted_account || "••••",
+            balance: account.balance?.current ?? 0,
+            availableBalance: account.balance?.available,
+            type: mapAkahuAccountType(account.type),
+            status: account.status,
+            lastRefreshed: account.refreshed?.balance || account.refreshed?.transactions,
+          }),
+        ) || []
 
       return accounts
     },
@@ -233,14 +257,14 @@ export function useAkahuAccounts() {
   })
 }
 
-export function useRefreshAkahu() {
+export const useRefreshAkahu = (): UseMutationResult<{ success: boolean }, Error, string | undefined> => {
   const queryClient = useQueryClient()
 
-  return useMutation({
-    mutationFn: async (accountOrConnectionId?: string) => {
+  return useMutation<{ success: boolean }, Error, string | undefined>({
+    mutationFn: async (accountOrConnectionId?: string): Promise<{ success: boolean }> => {
       return await akahuClient.refreshAccounts(accountOrConnectionId)
     },
-    onSuccess: () => {
+    onSuccess: (): void => {
       queryClient.invalidateQueries({ queryKey: ["akahu", "accounts"] })
     },
   })
