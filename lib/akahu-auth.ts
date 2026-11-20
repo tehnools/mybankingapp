@@ -9,7 +9,7 @@ export class AkahuAuth {
    * Opens the Akahu portal so the user can sign up and connect their NZ bank accounts.
    */
   static async openAkahuAccountSetup() {
-    await Linking.openURL("https://my.akahu.nz")
+    await Linking.openURL("https://my.akahu.nz/developers")
   }
 
   /**
