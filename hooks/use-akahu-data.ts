@@ -9,7 +9,7 @@ import {
 import { akahuClient } from "../lib/akahu-client"
 import { AkahuAuth } from "../lib/akahu-auth"
 import { SecurityManager } from "../lib/security"
-import { useAppStore, useSettingsFormStore } from "../lib/store"
+import { useAppStore, useLockScreenStore, useSettingsFormStore } from "../lib/store"
 import type {
   AkahuClipboardPasteResult,
   AkahuConnectionStatus,
@@ -52,7 +52,9 @@ const extractAndPasteTokensFromClipboard = async (): Promise<AkahuClipboardPaste
   }
 }
 
-export const useAutoPasteAkahuClipboard = (enabled: boolean): UseQueryResult<AkahuClipboardPasteResult, Error> => {
+export const useAutoPasteAkahuClipboard = (
+  enabled: boolean,
+): UseQueryResult<AkahuClipboardPasteResult, Error> => {
   return useQuery<AkahuClipboardPasteResult, Error>({
     queryKey: ["akahu", "clipboard-auto-paste", enabled],
     queryFn: extractAndPasteTokensFromClipboard,
@@ -91,28 +93,15 @@ const mapAkahuAccountType = (rawType?: string): BankAccount["type"] => {
 }
 
 export const useAkahuStoredSettings = (): UseQueryResult<AkahuStoredSettings, Error> => {
-  const resetForm = useSettingsFormStore((s) => s.resetForm)
-  const setConnected = useAppStore((s) => s.setConnected)
-
   return useQuery<AkahuStoredSettings, Error>({
     queryKey: ["akahu", "stored-settings"],
     queryFn: async (): Promise<AkahuStoredSettings> => {
-      const integrity = await SecurityManager.verifyDeviceBiometricIntegrity()
-      if (integrity.wipedDueToMissingBiometrics) {
-        await akahuClient.clearCredentials()
-        resetForm()
-        setConnected(false)
-        return {
-          appToken: "",
-          accessToken: "",
-          biometricEnabled: false,
-          hasStoredTokens: false,
-          wipedDueToMissingBiometrics: true,
-        }
-      }
-
+      // If biometrics were removed from the phone OS, gracefully disable the biometric shortcut
+      // without wiping tokens — the mandatory 6-digit PIN remains active as fallback!
+      const bioSync = await SecurityManager.syncDeviceBiometricAvailability()
       const stored = await akahuClient.getStoredCredentials()
-      const biometricEnabled = await SecurityManager.isBiometricEnabled()
+      const hasPin = await SecurityManager.hasPin()
+
       const appToken = stored.appToken || ""
       const accessToken = stored.accessToken || ""
       const hasStoredTokens = Boolean(appToken && accessToken)
@@ -120,9 +109,10 @@ export const useAkahuStoredSettings = (): UseQueryResult<AkahuStoredSettings, Er
       return {
         appToken,
         accessToken,
-        biometricEnabled,
+        hasPin,
+        biometricEnabled: bioSync.biometricEnabled,
         hasStoredTokens,
-        wipedDueToMissingBiometrics: false,
+        biometricsDisabledByOs: bioSync.biometricsDisabledByOs,
       }
     },
   })
@@ -136,7 +126,7 @@ export const useAutoBiometricUnlock = (shouldPrompt: boolean): UseQueryResult<bo
     queryFn: async (): Promise<boolean> => {
       const result = await SecurityManager.promptBiometric("Authenticate to unlock NZ Money Manager")
       if (!result.success) {
-        throw new Error(result.error || "Biometric authentication required to open the app.")
+        throw new Error(result.error || "Enter your 6-digit PIN to unlock.")
       }
       setSessionUnlocked(true)
       return true
@@ -155,7 +145,7 @@ export const useUnlockAppSession = (): UseMutationResult<boolean, Error, void> =
     mutationFn: async (): Promise<boolean> => {
       const result = await SecurityManager.promptBiometric("Authenticate to unlock NZ Money Manager")
       if (!result.success) {
-        throw new Error(result.error || "Biometric unlock failed.")
+        throw new Error(result.error || "Biometric unlock failed. Enter your 6-digit PIN instead.")
       }
       setSessionUnlocked(true)
       return true
@@ -163,14 +153,56 @@ export const useUnlockAppSession = (): UseMutationResult<boolean, Error, void> =
   })
 }
 
-export const useUnlockCredentialsForm = (): UseMutationResult<boolean, Error, void> => {
-  const unlockFormWithTokens = useSettingsFormStore((s) => s.unlockFormWithTokens)
+export const useUnlockAppWithPin = (): UseMutationResult<boolean, Error, string> => {
+  const setSessionUnlocked = useAppStore((s) => s.setSessionUnlocked)
+  const clearPinInput = useLockScreenStore((s) => s.clearPinInput)
 
-  return useMutation<boolean, Error, void>({
-    mutationFn: async (): Promise<boolean> => {
-      const auth = await SecurityManager.promptBiometric("Authenticate to unlock and edit your Akahu tokens")
-      if (!auth.success) {
-        throw new Error(auth.error || "Biometric unlock failed.")
+  return useMutation<boolean, Error, string>({
+    mutationFn: async (pin: string): Promise<boolean> => {
+      const valid = await SecurityManager.verifyPin(pin)
+      if (!valid) {
+        clearPinInput()
+        throw new Error("Incorrect 6-digit PIN. Please try again.")
+      }
+      clearPinInput()
+      setSessionUnlocked(true)
+      return true
+    },
+  })
+}
+
+export const useUnlockCredentialsForm = (): UseMutationResult<boolean, Error, { biometricEnabled: boolean }> => {
+  const unlockFormWithTokens = useSettingsFormStore((s) => s.unlockFormWithTokens)
+  const openPinFlow = useSettingsFormStore((s) => s.openPinFlow)
+
+  return useMutation<boolean, Error, { biometricEnabled: boolean }>({
+    mutationFn: async ({ biometricEnabled }: { biometricEnabled: boolean }): Promise<boolean> => {
+      if (biometricEnabled) {
+        const auth = await SecurityManager.promptBiometric("Authenticate to unlock and edit your Akahu tokens")
+        if (auth.success) {
+          const stored = await akahuClient.getStoredCredentials()
+          unlockFormWithTokens(stored.appToken || "", stored.accessToken || "")
+          return true
+        }
+      }
+
+      // Fallback to mandatory 6-digit PIN modal
+      openPinFlow("verify-edit")
+      return false
+    },
+  })
+}
+
+export const useVerifyPinForEdit = (): UseMutationResult<boolean, Error, string> => {
+  const unlockFormWithTokens = useSettingsFormStore((s) => s.unlockFormWithTokens)
+  const setPinError = useSettingsFormStore((s) => s.setPinError)
+
+  return useMutation<boolean, Error, string>({
+    mutationFn: async (pin: string): Promise<boolean> => {
+      const valid = await SecurityManager.verifyPin(pin)
+      if (!valid) {
+        setPinError("Incorrect 6-digit PIN. Please try again.")
+        throw new Error("Incorrect 6-digit PIN.")
       }
       const stored = await akahuClient.getStoredCredentials()
       unlockFormWithTokens(stored.appToken || "", stored.accessToken || "")
@@ -191,7 +223,7 @@ export const useAkahuConnection = (): UseQueryResult<AkahuConnectionStatus, Erro
         }
         const me = await akahuClient.getMe()
         return { connected: !!me?.item, user: me?.item || null }
-      } catch (error) {
+      } catch {
         return { connected: false, user: null }
       }
     },
@@ -199,8 +231,14 @@ export const useAkahuConnection = (): UseQueryResult<AkahuConnectionStatus, Erro
   })
 }
 
+/**
+ * Step 1 of saving Akahu tokens:
+ * - Verifies tokens against Akahu (/v1/me)
+ * - If no 6-digit PIN exists yet, opens the mandatory 6-digit PIN setup flow (PIN first -> Biometric uplift)
+ * - If a 6-digit PIN already exists, saves and locks the updated tokens immediately
+ */
 export const useSaveAkahuTokens = (): UseMutationResult<
-  AkahuUser | undefined,
+  { user?: AkahuUser; needsPinSetup: boolean },
   Error,
   { appToken: string; userToken: string }
 > => {
@@ -208,15 +246,16 @@ export const useSaveAkahuTokens = (): UseMutationResult<
   const setSessionUnlocked = useAppStore((s) => s.setSessionUnlocked)
   const setConnected = useAppStore((s) => s.setConnected)
   const lockForm = useSettingsFormStore((s) => s.lockForm)
+  const openPinFlow = useSettingsFormStore((s) => s.openPinFlow)
 
-  return useMutation<AkahuUser | undefined, Error, { appToken: string; userToken: string }>({
+  return useMutation<{ user?: AkahuUser; needsPinSetup: boolean }, Error, { appToken: string; userToken: string }>({
     mutationFn: async ({
       appToken,
       userToken,
     }: {
       appToken: string
       userToken: string
-    }): Promise<AkahuUser | undefined> => {
+    }): Promise<{ user?: AkahuUser; needsPinSetup: boolean }> => {
       if (!appToken.trim() || !userToken.trim()) {
         throw new Error("Please enter both your App ID Token and User Access Token.")
       }
@@ -226,26 +265,121 @@ export const useSaveAkahuTokens = (): UseMutationResult<
         throw new Error(result.error || "Could not verify tokens with Akahu.")
       }
 
-      const bioResult = await SecurityManager.enableBiometricAuth(
-        "Authenticate with biometrics to lock and store your Akahu tokens",
-      )
-
-      if (!bioResult.success) {
-        await AkahuAuth.disconnect()
-        throw new Error(bioResult.error || "Biometric confirmation is required to store your Akahu tokens.")
-      }
-
       if (result.user) {
         await SecurityManager.storeUserProfile(result.user)
+      }
+
+      const hasPin = await SecurityManager.hasPin()
+      if (!hasPin) {
+        // Mandatory 6-digit PIN setup first, followed by optional biometric uplift
+        openPinFlow("setup-pin")
+        return { user: result.user, needsPinSetup: true }
       }
 
       lockForm()
       setConnected(true)
       setSessionUnlocked(true)
-      return result.user
+      return { user: result.user, needsPinSetup: false }
+    },
+    onSuccess: async (data): Promise<void> => {
+      if (!data.needsPinSetup) {
+        await queryClient.invalidateQueries({ queryKey: ["akahu"] })
+      }
+    },
+  })
+}
+
+/**
+ * Step 2 of initial setup:
+ * - Saves the confirmed mandatory 6-digit PIN
+ * - Immediately offers Biometric Uplift if the device has biometrics enrolled
+ */
+export const useCompletePinAndBiometricUplift = (): UseMutationResult<
+  { biometricsEnabled: boolean },
+  Error,
+  string
+> => {
+  const queryClient = useQueryClient()
+  const setSessionUnlocked = useAppStore((s) => s.setSessionUnlocked)
+  const setConnected = useAppStore((s) => s.setConnected)
+  const lockForm = useSettingsFormStore((s) => s.lockForm)
+
+  return useMutation<{ biometricsEnabled: boolean }, Error, string>({
+    mutationFn: async (confirmedPin: string): Promise<{ biometricsEnabled: boolean }> => {
+      await SecurityManager.setPin(confirmedPin)
+
+      let biometricsEnabled = false
+      const canUseBio = await SecurityManager.canUseBiometrics()
+      if (canUseBio) {
+        const uplift = await SecurityManager.enableBiometricAuth(
+          "Enable biometrics for faster unlock (your 6-digit PIN remains your backup)",
+        )
+        biometricsEnabled = uplift.success
+      }
+
+      lockForm()
+      setConnected(true)
+      setSessionUnlocked(true)
+      return { biometricsEnabled }
     },
     onSuccess: async (): Promise<void> => {
       await queryClient.invalidateQueries({ queryKey: ["akahu"] })
+    },
+  })
+}
+
+/**
+ * Enables or disables the optional Biometrics shortcut without wiping stored tokens
+ * (the mandatory 6-digit PIN stays active as the primary fallback).
+ */
+export const useToggleBiometrics = (): UseMutationResult<boolean, Error, boolean> => {
+  const queryClient = useQueryClient()
+  const openPinFlow = useSettingsFormStore((s) => s.openPinFlow)
+
+  return useMutation<boolean, Error, boolean>({
+    mutationFn: async (enable: boolean): Promise<boolean> => {
+      if (enable) {
+        const result = await SecurityManager.enableBiometricAuth("Authenticate to enable Biometric Unlock")
+        if (!result.success) {
+          throw new Error(result.error || "Could not enable biometric unlock.")
+        }
+        return true
+      }
+
+      // Turning biometrics OFF: try biometric confirmation first, or fall back to 6-digit PIN
+      const auth = await SecurityManager.promptBiometric("Authenticate to turn off Biometric Unlock")
+      if (auth.success) {
+        await SecurityManager.setBiometricEnabled(false)
+        return false
+      }
+
+      openPinFlow("verify-disable-bio")
+      throw new Error("Enter your 6-digit PIN to turn off Biometric Unlock.")
+    },
+    onSuccess: async (): Promise<void> => {
+      await queryClient.invalidateQueries({ queryKey: ["akahu", "stored-settings"] })
+    },
+  })
+}
+
+export const useVerifyPinToDisableBiometrics = (): UseMutationResult<boolean, Error, string> => {
+  const queryClient = useQueryClient()
+  const closePinFlow = useSettingsFormStore((s) => s.closePinFlow)
+  const setPinError = useSettingsFormStore((s) => s.setPinError)
+
+  return useMutation<boolean, Error, string>({
+    mutationFn: async (pin: string): Promise<boolean> => {
+      const valid = await SecurityManager.verifyPin(pin)
+      if (!valid) {
+        setPinError("Incorrect 6-digit PIN. Please try again.")
+        throw new Error("Incorrect 6-digit PIN.")
+      }
+      await SecurityManager.setBiometricEnabled(false)
+      closePinFlow()
+      return true
+    },
+    onSuccess: async (): Promise<void> => {
+      await queryClient.invalidateQueries({ queryKey: ["akahu", "stored-settings"] })
     },
   })
 }
@@ -255,19 +389,9 @@ export const useWipeAkahuTokens = (): UseMutationResult<boolean, Error, void> =>
   const setSessionUnlocked = useAppStore((s) => s.setSessionUnlocked)
   const setConnected = useAppStore((s) => s.setConnected)
   const resetForm = useSettingsFormStore((s) => s.resetForm)
-  const setShowWipeModal = useSettingsFormStore((s) => s.setShowWipeModal)
 
   return useMutation<boolean, Error, void>({
     mutationFn: async (): Promise<boolean> => {
-      const auth = await SecurityManager.promptBiometric(
-        "Authenticate to turn off biometrics and wipe your Akahu tokens",
-      )
-
-      if (!auth.success) {
-        setShowWipeModal(false)
-        throw new Error(auth.error || "Biometric verification required to turn off security.")
-      }
-
       await SecurityManager.clearAllSecureData()
       await AkahuAuth.disconnect()
       resetForm()
@@ -290,17 +414,19 @@ export const useAkahuAccounts = (): UseQueryResult<BankAccount[], Error> => {
       const response = await akahuClient.getAccounts()
 
       const accounts: BankAccount[] =
-        response.items?.map((account: AkahuRawAccount): BankAccount => ({
-          id: account._id,
-          name: account.name,
-          bank: account.connection?.name || "NZ Bank",
-          accountNumber: account.formatted_account || "••••",
-          balance: account.balance?.current ?? 0,
-          availableBalance: account.balance?.available,
-          type: mapAkahuAccountType(account.type),
-          status: account.status,
-          lastRefreshed: account.refreshed?.balance || account.refreshed?.transactions,
-        })) || []
+        response.items?.map(
+          (account: AkahuRawAccount): BankAccount => ({
+            id: account._id,
+            name: account.name,
+            bank: account.connection?.name || "NZ Bank",
+            accountNumber: account.formatted_account || "••••",
+            balance: account.balance?.current ?? 0,
+            availableBalance: account.balance?.available,
+            type: mapAkahuAccountType(account.type),
+            status: account.status,
+            lastRefreshed: account.refreshed?.balance || account.refreshed?.transactions,
+          }),
+        ) || []
 
       return accounts
     },

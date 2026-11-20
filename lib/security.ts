@@ -1,6 +1,7 @@
 import { Platform } from "react-native"
 import * as SecureStore from "expo-secure-store"
 import * as LocalAuthentication from "expo-local-authentication"
+import * as Crypto from "expo-crypto"
 import * as Device from "expo-device"
 
 // Cross-platform secure storage helper (uses SecureStore on iOS/Android, localStorage on web preview)
@@ -36,13 +37,18 @@ const deleteItem = async (key: string): Promise<void> => {
 
 export class SecurityManager {
   private static readonly BIOMETRIC_KEY = "biometric_enabled"
+  private static readonly PIN_HASH_KEY = "app_pin_hash"
+  private static readonly PIN_SALT_KEY = "app_pin_salt"
   private static readonly SESSION_KEY = "user_session"
   private static readonly USER_PROFILE_KEY = "akahu_user_profile"
 
-  // Session timeout in milliseconds (15 minutes)
-  private static readonly SESSION_TIMEOUT = 15 * 60 * 1000
-
-  static async initializeSecurity() {
+  static async initializeSecurity(): Promise<{
+    hasHardware: boolean
+    isEnrolled: boolean
+    supportedTypes: LocalAuthentication.AuthenticationType[]
+    deviceName: string | null
+    isDevice: boolean
+  } | null> {
     try {
       if (Platform.OS === "web") {
         return {
@@ -72,30 +78,85 @@ export class SecurityManager {
   }
 
   /**
-   * Prompts the user for biometric / device credential authentication.
+   * Hashes and stores a mandatory 6-digit App PIN using a random salt + SHA-256.
+   */
+  static async setPin(pin: string): Promise<void> {
+    if (!/^\d{6}$/.test(pin)) {
+      throw new Error("PIN must be exactly 6 digits.")
+    }
+    const salt = Crypto.randomUUID()
+    const hash = await Crypto.digestStringAsync(Crypto.CryptoDigestAlgorithm.SHA256, `${salt}:${pin}`, {
+      encoding: Crypto.CryptoEncoding.HEX,
+    })
+    await setItem(this.PIN_SALT_KEY, salt)
+    await setItem(this.PIN_HASH_KEY, hash)
+  }
+
+  /**
+   * Verifies a 6-digit PIN against the stored salted SHA-256 hash.
+   */
+  static async verifyPin(pin: string): Promise<boolean> {
+    if (!/^\d{6}$/.test(pin)) return false
+    const salt = await getItem(this.PIN_SALT_KEY)
+    const storedHash = await getItem(this.PIN_HASH_KEY)
+    if (!salt || !storedHash) return false
+
+    const candidateHash = await Crypto.digestStringAsync(Crypto.CryptoDigestAlgorithm.SHA256, `${salt}:${pin}`, {
+      encoding: Crypto.CryptoEncoding.HEX,
+    })
+    return candidateHash === storedHash
+  }
+
+  static async hasPin(): Promise<boolean> {
+    try {
+      const storedHash = await getItem(this.PIN_HASH_KEY)
+      return Boolean(storedHash)
+    } catch {
+      return false
+    }
+  }
+
+  static async clearPin(): Promise<void> {
+    await deleteItem(this.PIN_HASH_KEY)
+    await deleteItem(this.PIN_SALT_KEY)
+  }
+
+  /**
+   * Checks whether device biometric hardware is available and enrolled.
+   */
+  static async canUseBiometrics(): Promise<boolean> {
+    if (Platform.OS === "web") return false
+    try {
+      const hasHardware = await LocalAuthentication.hasHardwareAsync()
+      const isEnrolled = await LocalAuthentication.isEnrolledAsync()
+      return hasHardware && isEnrolled
+    } catch {
+      return false
+    }
+  }
+
+  /**
+   * Prompts the user for biometric authentication.
    */
   static async promptBiometric(promptMessage: string): Promise<{ success: boolean; error?: string }> {
     try {
       if (Platform.OS === "web") {
-        return { success: true }
+        return { success: false, error: "Biometrics not available on web. Use your 6-digit PIN." }
       }
 
-      const hasHardware = await LocalAuthentication.hasHardwareAsync()
-      const isEnrolled = await LocalAuthentication.isEnrolledAsync()
-
-      if (!hasHardware || !isEnrolled) {
+      const available = await this.canUseBiometrics()
+      if (!available) {
         return {
           success: false,
-          error:
-            "Biometrics or device screen lock is not set up on this phone. Please enable Fingerprint/Face Unlock in your phone settings.",
+          error: "Biometrics are not enrolled on this device. Please use your 6-digit PIN.",
         }
       }
 
       const result = await LocalAuthentication.authenticateAsync({
         promptMessage,
-        fallbackLabel: "Use passcode",
-        cancelLabel: "Cancel",
-        disableDeviceFallback: false,
+        fallbackLabel: "Use 6-digit PIN",
+        cancelLabel: "Use PIN",
+        disableDeviceFallback: true,
       })
 
       if (result.success) {
@@ -104,7 +165,7 @@ export class SecurityManager {
 
       return {
         success: false,
-        error: "Biometric authentication was cancelled or failed.",
+        error: "Biometric authentication was cancelled. You can unlock with your 6-digit PIN.",
       }
     } catch (error) {
       console.error("Biometric prompt failed:", error)
@@ -124,7 +185,7 @@ export class SecurityManager {
   }
 
   static async enableBiometricAuth(
-    promptMessage = "Authenticate with biometrics to lock and secure your Akahu tokens",
+    promptMessage = "Enable biometrics for faster unlock",
   ): Promise<{ success: boolean; error?: string }> {
     const auth = await this.promptBiometric(promptMessage)
     if (auth.success) {
@@ -138,53 +199,46 @@ export class SecurityManager {
     try {
       const enabled = await getItem(this.BIOMETRIC_KEY)
       return enabled === "true"
-    } catch (error) {
+    } catch {
       return false
     }
   }
 
   /**
-   * Ensures that if tokens or biometric security were stored, the phone still has
-   * biometrics enrolled at the OS level. If the user removed their fingerprints / Face ID
-   * from phone settings, all stored Akahu tokens are automatically wiped.
+   * If the user removed fingerprints / Face ID from their phone OS while biometrics were enabled,
+   * gracefully disable the biometric shortcut and keep stored tokens + 6-digit PIN intact!
    */
-  static async verifyDeviceBiometricIntegrity(): Promise<{
-    intact: boolean
-    wipedDueToMissingBiometrics: boolean
+  static async syncDeviceBiometricAvailability(): Promise<{
+    biometricEnabled: boolean
+    biometricsDisabledByOs: boolean
   }> {
     try {
+      const enabled = await this.isBiometricEnabled()
+      if (!enabled) {
+        return { biometricEnabled: false, biometricsDisabledByOs: false }
+      }
+
       if (Platform.OS === "web") {
-        return { intact: true, wipedDueToMissingBiometrics: false }
+        return { biometricEnabled: false, biometricsDisabledByOs: false }
       }
 
-      const bioEnabled = await this.isBiometricEnabled()
-      const hasAppToken = Boolean(await getItem("akahu_app_token"))
-      const hasAccessToken = Boolean(await getItem("akahu_access_token"))
-
-      if (!bioEnabled && !hasAppToken && !hasAccessToken) {
-        return { intact: true, wipedDueToMissingBiometrics: false }
+      const available = await this.canUseBiometrics()
+      if (!available) {
+        await this.setBiometricEnabled(false)
+        return { biometricEnabled: false, biometricsDisabledByOs: true }
       }
 
-      const hasHardware = await LocalAuthentication.hasHardwareAsync()
-      const isEnrolled = await LocalAuthentication.isEnrolledAsync()
-
-      if (!hasHardware || !isEnrolled) {
-        await this.clearAllSecureData()
-        return { intact: false, wipedDueToMissingBiometrics: true }
-      }
-
-      return { intact: true, wipedDueToMissingBiometrics: false }
-    } catch (error) {
-      console.error("Failed to verify biometric integrity:", error)
-      return { intact: true, wipedDueToMissingBiometrics: false }
+      return { biometricEnabled: true, biometricsDisabledByOs: false }
+    } catch {
+      return { biometricEnabled: false, biometricsDisabledByOs: false }
     }
   }
 
-  static async storeUserProfile(user: Record<string, any>): Promise<void> {
+  static async storeUserProfile(user: Record<string, unknown>): Promise<void> {
     await setItem(this.USER_PROFILE_KEY, JSON.stringify(user))
   }
 
-  static async getUserProfile(): Promise<Record<string, any> | null> {
+  static async getUserProfile(): Promise<Record<string, unknown> | null> {
     const raw = await getItem(this.USER_PROFILE_KEY)
     if (!raw) return null
     try {
@@ -230,6 +284,7 @@ export class SecurityManager {
       await this.deleteSecureData(this.USER_PROFILE_KEY)
       await this.deleteSecureData(this.SESSION_KEY)
       await this.deleteSecureData(this.BIOMETRIC_KEY)
+      await this.clearPin()
       await this.deleteSecureData("user_preferences")
     } catch (error) {
       console.error("Failed to clear all secure data:", error)

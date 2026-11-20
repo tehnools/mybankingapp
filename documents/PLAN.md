@@ -5,53 +5,51 @@ Akahu charges commercial fees for multi-user OAuth apps, **but provides free "Pe
 By guiding each user to sign up on Akahu as a Personal App developer, accept Akahu's developer agreement, and bring their own `app_token_...` and `user_token_...` into the mobile app:
 - **$0 API fees** for you and your users.
 - **$0 server costs** (the mobile app calls `https://api.akahu.io/v1` directly from the phone with no backend needed).
-- **100% on-device privacy** (tokens are locked inside the phone's hardware keystore behind biometrics).
+- **100% on-device privacy** (tokens and salted PIN hash live inside hardware-backed `expo-secure-store`).
 
 ---
 
-## Phase 1: Barebones App Shell, Akahu Token Setup & Biometric Uplift (Current)
+## Phase 1: Barebones App Shell, Akahu Setup, Mandatory 6-Digit PIN & Biometric Uplift ✅ (Complete)
 
-**Goal:** Get into the barebones app shell (`Home`, `Accounts`, `Settings`), allow the user to save their Akahu tokens in Settings, and immediately lock them behind a Biometric Uplift.
+**Goal:** Get into the barebones app shell (`Home`, `Accounts`, `Settings`), set up Akahu tokens with clipboard auto-paste, and secure the app with a mandatory 6-digit PIN + optional biometric uplift.
 
 ### 1. Minimal Bottom Tab Navigation (`app/_layout.tsx`)
-- **Home (`app/index.tsx`)**: Minimal landing page displaying connection status.
-- **Accounts (`app/accounts.tsx`)**: Placeholder screen ready for Phase 2.
-- **Settings (`app/settings.tsx`)**: Akahu token entry, biometric uplift, locked credential form, and biometric toggle.
+- [x] **Home (`app/index.tsx`)**: Minimal landing page displaying Akahu connection status.
+- [x] **Accounts (`app/accounts.tsx`)**: Placeholder screen ready for Phase 2.
+- [x] **Settings (`app/settings.tsx`)**: Akahu token entry, clipboard auto-paste, mandatory 6-digit PIN setup, locked credential form, and optional biometric toggle.
 
-### 2. Biometric Uplift & Locked Credential Form (`app/settings.tsx` & `lib/security.ts`)
-1. **Enter & Verify Tokens:**
-   - User opens `https://my.akahu.nz` (link banks) and `https://my.akahu.nz/developers` (accept Developer Terms & copy `app_token_...` and `user_token_...`).
-   - User pastes both tokens into Settings and taps **"Verify & Lock with Biometrics"**.
-2. **Biometric Uplift on Save:**
-   - App verifies the tokens against `GET https://api.akahu.io/v1/me`.
-   - Immediately prompts a **biometric uplift** (`expo-local-authentication`) before locking and persisting the tokens and user profile in `expo-secure-store`.
-3. **Locked Form & Biometric Edit Button:**
-   - Once saved, the `App ID Token` and `User Access Token` inputs are **locked and masked** (`app_token_••••`).
-   - Tapping the **"Edit"** button triggers a **biometric unlock prompt** before allowing any edits.
-4. **Biometric Security Toggle & Wipe Warning Modal:**
-   - Settings includes a **Biometric Security** toggle switch.
-   - Toggling it **OFF** opens a **Warning Modal** informing the user that turning off biometrics will permanently wipe their stored `App ID Token` and `User Access Token` from device storage, requiring them to copy and paste both tokens all over again.
-   - Confirming the modal requires **biometric verification** before wiping the tokens and disabling biometrics.
+### 2. Akahu Token Setup & Auto-Paste (`hooks/use-akahu-data.ts` & `app/settings.tsx`)
+- [x] **External Links**: Quick buttons to open `https://my.akahu.nz` (link banks) and `https://my.akahu.nz/developers` (accept Developer Terms & create Personal App).
+- [x] **Clipboard Auto-Paste (`expo-clipboard`)**: Automatically detects `app_token_...` and `user_token_...` from the clipboard when returning to the app (plus manual one-tap Paste button).
+- [x] **Live Verification**: Validates both tokens against `GET https://api.akahu.io/v1/me` and stores the user profile.
+
+### 3. Mandatory 6-Digit PIN First → Optional Biometric Uplift (`lib/security.ts`, `components/pin-pad.tsx`, `hooks/use-app-state.ts`)
+- [x] **Mandatory 6-Digit PIN**: Created & confirmed when first saving Akahu tokens; stored as a random-salted SHA-256 hash in `expo-secure-store`.
+- [x] **Optional Biometric Uplift**: Immediately offered after setting the 6-digit PIN if the device has biometrics enrolled.
+- [x] **Locked Credential Form**: Tokens are masked and read-only once saved; tapping **Edit** tries biometrics first (if enabled) and falls back to the 6-digit PIN pad.
+- [x] **Graceful OS Biometrics Fallback (No Token Wipe)**: If the user removes biometrics from Android/iOS settings or toggles Biometric Unlock off in Settings, biometrics are cleanly disabled while tokens and the mandatory 6-digit PIN stay intact.
+- [x] **Cold-Launch-Only Lock (`useAppLifecycleState`)**: Moving between background and foreground keeps the session unlocked; only a full app close & reopen triggers the lock screen (Biometrics first, 6-digit PIN pad fallback).
+- [x] **Explicit Wipe Option**: Separate **"Clear Saved Tokens & Reset PIN"** confirmation modal in Settings.
 
 ---
 
-## Phase 2: Add & List Connected Bank Accounts (`app/accounts.tsx`)
+## Phase 2: Add & List Connected Bank Accounts (`app/accounts.tsx`) — Next
 
-**Goal:** Once tokens are verified and locked in Settings, display and manage connected NZ bank accounts in the **Accounts** tab.
+**Goal:** Connect the **Accounts** tab to Akahu's `/v1/accounts` and `/v1/refresh` endpoints.
 
 1. **List Connected Accounts (`GET /v1/accounts`)**:
-   - Display bank name, account name, masked account number, current balance, and available balance.
+   - Display bank name, account name, masked account number, current balance, and available balance using `useAkahuAccounts()`.
 2. **Add / Link More Banks & Sync**:
    - Button to open `https://my.akahu.nz` to link additional NZ bank accounts.
-   - **Sync / Refresh** button (`POST /v1/refresh`) to pull updated account balances.
+   - **Sync / Refresh** button (`POST /v1/refresh` via `useRefreshAkahu()`) and pull-to-refresh to update balances.
 
 ---
 
-## Phase 3: App Launch Biometric Lock Screen & Auto-Paste Onboarding Polish
+## Phase 3: Home Dashboard Summary (`app/index.tsx`)
 
-**Goal:** Require biometric unlock when reopening the app (if tokens are stored) and add clipboard auto-paste conveniences.
+**Goal:** Show a clean total net balance card across connected NZ bank accounts and quick navigation to Accounts and Settings.
 
 ---
 
 ## Phase 4: Future Enhancements
-- Transactions list, search/filtering, and spending insights once Phases 1–3 are tested end-to-end.
+- Transactions list (`GET /v1/transactions` and `/v1/accounts/{id}/transactions`), search/filtering, and spending insights once Phases 1–3 are tested end-to-end.

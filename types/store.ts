@@ -1,3 +1,5 @@
+import type { AppStateStatus } from "react-native"
+
 export interface BankAccount {
   id: string
   name: string
@@ -34,11 +36,17 @@ export interface AppStoreState {
   transactions: Transaction[]
   isConnected: boolean
   isSessionUnlocked: boolean
+  appState: AppStateStatus
+  previousAppState: AppStateStatus | null
+  isReturningFromBackground: boolean
   setAccounts: (accounts: BankAccount[]) => void
   setTransactions: (transactions: Transaction[]) => void
   setConnected: (connected: boolean) => void
   setSessionUnlocked: (unlocked: boolean) => void
+  setAppStateTransition: (nextState: AppStateStatus) => void
 }
+
+export type PinFlowMode = "closed" | "setup-pin" | "confirm-pin" | "verify-edit" | "verify-disable-bio"
 
 export interface SettingsFormState {
   draftAppToken: string
@@ -46,6 +54,10 @@ export interface SettingsFormState {
   showUserToken: boolean
   isUnlockedForEditing: boolean
   showWipeModal: boolean
+  pinFlowMode: PinFlowMode
+  pinInput: string
+  firstPinEntry: string
+  pinError: string | null
   setDraftAppToken: (value: string) => void
   setDraftUserToken: (value: string) => void
   toggleShowUserToken: () => void
@@ -53,4 +65,28 @@ export interface SettingsFormState {
   lockForm: () => void
   resetForm: () => void
   setShowWipeModal: (visible: boolean) => void
+  openPinFlow: (mode: Exclude<PinFlowMode, "closed">) => void
+  closePinFlow: () => void
+  setPinInput: (pin: string) => void
+  advanceToConfirmPin: (firstPin: string) => void
+  setPinError: (error: string | null) => void
+}
+
+export interface LockScreenState {
+  pinInput: string
+  setPinInput: (pin: string) => void
+  clearPinInput: () => void
+}
+
+export interface AppLifecycleState {
+  appState: AppStateStatus
+  previousAppState: AppStateStatus | null
+  isForeground: boolean
+  isBackground: boolean
+  isReturningFromBackground: boolean
+  isSessionUnlocked: boolean
+  requiresUnlock: boolean
+  biometricEnabled: boolean
+  hasPin: boolean
+  isLoading: boolean
 }

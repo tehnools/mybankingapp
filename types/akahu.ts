@@ -8,9 +8,10 @@ export interface AkahuUser {
 export interface AkahuStoredSettings {
   appToken: string
   accessToken: string
+  hasPin: boolean
   biometricEnabled: boolean
   hasStoredTokens: boolean
-  wipedDueToMissingBiometrics: boolean
+  biometricsDisabledByOs: boolean
 }
 
 export interface AkahuConnectionStatus {

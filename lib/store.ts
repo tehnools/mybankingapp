@@ -1,16 +1,41 @@
-import { AppState, type AppStateStatus } from "react-native"
+import { AppState, Platform, type AppStateStatus } from "react-native"
 import { create } from "zustand"
-import type { AppStoreState, SettingsFormState } from "../types"
+import { focusManager } from "@tanstack/react-query"
+import type { AppStoreState, LockScreenState, PinFlowMode, SettingsFormState } from "../types"
 
 export const useAppStore = create<AppStoreState>((set) => ({
   accounts: [],
   transactions: [],
   isConnected: false,
+  // Starts false on a cold app launch (when app was closed/terminated and reopened),
+  // and stays true across background <-> foreground transitions while the app remains open.
   isSessionUnlocked: false,
+  appState: AppState.currentState,
+  previousAppState: null,
+  isReturningFromBackground: false,
   setAccounts: (accounts) => set({ accounts }),
   setTransactions: (transactions) => set({ transactions }),
   setConnected: (connected) => set({ isConnected: connected }),
   setSessionUnlocked: (unlocked) => set({ isSessionUnlocked: unlocked }),
+  setAppStateTransition: (nextState: AppStateStatus) =>
+    set((state) => {
+      const wasBackgrounded =
+        Platform.OS === "ios"
+          ? state.appState === "background" || state.appState === "inactive"
+          : state.appState === "background"
+
+      return {
+        previousAppState: state.appState,
+        appState: nextState,
+        isReturningFromBackground: wasBackgrounded && nextState === "active",
+      }
+    }),
+}))
+
+export const useLockScreenStore = create<LockScreenState>((set) => ({
+  pinInput: "",
+  setPinInput: (pinInput: string) => set({ pinInput }),
+  clearPinInput: () => set({ pinInput: "" }),
 }))
 
 export const useSettingsFormStore = create<SettingsFormState>((set) => ({
@@ -19,19 +44,31 @@ export const useSettingsFormStore = create<SettingsFormState>((set) => ({
   showUserToken: false,
   isUnlockedForEditing: false,
   showWipeModal: false,
-  setDraftAppToken: (draftAppToken) => set({ draftAppToken }),
-  setDraftUserToken: (draftUserToken) => set({ draftUserToken }),
+  pinFlowMode: "closed",
+  pinInput: "",
+  firstPinEntry: "",
+  pinError: null,
+  setDraftAppToken: (draftAppToken: string) => set({ draftAppToken }),
+  setDraftUserToken: (draftUserToken: string) => set({ draftUserToken }),
   toggleShowUserToken: () => set((s) => ({ showUserToken: !s.showUserToken })),
-  unlockFormWithTokens: (draftAppToken, draftUserToken) =>
+  unlockFormWithTokens: (draftAppToken: string, draftUserToken: string) =>
     set({
       draftAppToken,
       draftUserToken,
       isUnlockedForEditing: true,
+      pinFlowMode: "closed",
+      pinInput: "",
+      firstPinEntry: "",
+      pinError: null,
     }),
   lockForm: () =>
     set({
       isUnlockedForEditing: false,
       showUserToken: false,
+      pinFlowMode: "closed",
+      pinInput: "",
+      firstPinEntry: "",
+      pinError: null,
     }),
   resetForm: () =>
     set({
@@ -40,14 +77,39 @@ export const useSettingsFormStore = create<SettingsFormState>((set) => ({
       showUserToken: false,
       isUnlockedForEditing: false,
       showWipeModal: false,
+      pinFlowMode: "closed",
+      pinInput: "",
+      firstPinEntry: "",
+      pinError: null,
     }),
-  setShowWipeModal: (showWipeModal) => set({ showWipeModal }),
+  setShowWipeModal: (showWipeModal: boolean) => set({ showWipeModal }),
+  openPinFlow: (pinFlowMode: Exclude<PinFlowMode, "closed">) =>
+    set({
+      pinFlowMode,
+      pinInput: "",
+      firstPinEntry: "",
+      pinError: null,
+    }),
+  closePinFlow: () =>
+    set({
+      pinFlowMode: "closed",
+      pinInput: "",
+      firstPinEntry: "",
+      pinError: null,
+    }),
+  setPinInput: (pinInput: string) => set({ pinInput, pinError: null }),
+  advanceToConfirmPin: (firstPinEntry: string) =>
+    set({
+      firstPinEntry,
+      pinInput: "",
+      pinFlowMode: "confirm-pin",
+      pinError: null,
+    }),
+  setPinError: (pinError: string | null) => set({ pinError, pinInput: "" }),
 }))
 
-// Automatically lock the session and credential form whenever the app is closed or sent to the background
-AppState.addEventListener("change", (nextState: AppStateStatus) => {
-  if (nextState === "background") {
-    useAppStore.getState().setSessionUnlocked(false)
-    useSettingsFormStore.getState().lockForm()
-  }
+// Track foreground/background transitions for Android & iOS without locking the session
+AppState.addEventListener("change", (nextState: AppStateStatus): void => {
+  useAppStore.getState().setAppStateTransition(nextState)
+  focusManager.setFocused(nextState === "active")
 })

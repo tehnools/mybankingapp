@@ -1,18 +1,14 @@
 import React from "react"
-import { AppState, View, StyleSheet, TouchableOpacity, ActivityIndicator, type ColorValue } from "react-native"
+import { View, StyleSheet, ActivityIndicator, type ColorValue } from "react-native"
 import { Tabs } from "expo-router"
-import { QueryClient, QueryClientProvider, focusManager } from "@tanstack/react-query"
+import { QueryClient, QueryClientProvider } from "@tanstack/react-query"
 import { SafeAreaProvider } from "react-native-safe-area-context"
 import { StatusBar } from "expo-status-bar"
 import { Ionicons } from "@expo/vector-icons"
-import { Text } from "../components/app-text"
-import { useAkahuStoredSettings, useAutoBiometricUnlock, useUnlockAppSession } from "../hooks/use-akahu-data"
-import { useAppStore } from "../lib/store"
-
-// Refetch active queries (including biometric integrity check) whenever app returns to foreground
-AppState.addEventListener("change", (status) => {
-  focusManager.setFocused(status === "active")
-})
+import { PinPad } from "../components/pin-pad"
+import { useAutoBiometricUnlock, useUnlockAppSession, useUnlockAppWithPin } from "../hooks/use-akahu-data"
+import { useAppLifecycleState } from "../hooks/use-app-state"
+import { useLockScreenStore } from "../lib/store"
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -23,16 +19,13 @@ const queryClient = new QueryClient({
   },
 })
 
-const BiometricLockGate = ({ children }: { children: React.ReactNode }): React.JSX.Element => {
-  const { data: storedSettings, isLoading } = useAkahuStoredSettings()
-  const isSessionUnlocked = useAppStore((s) => s.isSessionUnlocked)
-  const unlockMutation = useUnlockAppSession()
+const AppLockGate = ({ children }: { children: React.ReactNode }): React.JSX.Element => {
+  const { requiresUnlock, biometricEnabled, isLoading } = useAppLifecycleState()
+  const { pinInput, setPinInput } = useLockScreenStore()
 
-  const requiresBiometricUnlock = Boolean(
-    storedSettings?.hasStoredTokens && storedSettings?.biometricEnabled && !isSessionUnlocked,
-  )
-
-  const autoUnlockQuery = useAutoBiometricUnlock(requiresBiometricUnlock)
+  const unlockBioMutation = useUnlockAppSession()
+  const unlockPinMutation = useUnlockAppWithPin()
+  const autoUnlockQuery = useAutoBiometricUnlock(requiresUnlock && biometricEnabled)
 
   if (isLoading) {
     return (
@@ -42,44 +35,41 @@ const BiometricLockGate = ({ children }: { children: React.ReactNode }): React.J
     )
   }
 
-  if (requiresBiometricUnlock) {
+  if (requiresUnlock) {
     const errorMessage =
-      (unlockMutation.error instanceof Error && unlockMutation.error.message) ||
+      (unlockPinMutation.error instanceof Error && unlockPinMutation.error.message) ||
+      (unlockBioMutation.error instanceof Error && unlockBioMutation.error.message) ||
       (autoUnlockQuery.error instanceof Error && autoUnlockQuery.error.message) ||
       null
+
+    const isAuthenticating = unlockBioMutation.isPending || unlockPinMutation.isPending || autoUnlockQuery.isFetching
 
     return (
       <View style={styles.lockContainer}>
         <View style={styles.lockCard}>
-          <View style={styles.iconCircle}>
-            <Ionicons name="lock-closed" size={40} color="#3b82f6" />
-          </View>
-          <Text style={styles.lockTitle}>App Locked</Text>
-          <Text style={styles.lockSubtitle}>
-            Authenticate with biometrics to access your NZ Money Manager accounts and Akahu credentials.
-          </Text>
-
-          {errorMessage && (
-            <View style={styles.errorBanner}>
-              <Ionicons name="alert-circle" size={18} color="#dc2626" />
-              <Text style={styles.errorText}>{errorMessage}</Text>
-            </View>
-          )}
-
-          <TouchableOpacity
-            style={styles.unlockButton}
-            onPress={() => unlockMutation.mutate()}
-            disabled={unlockMutation.isPending || autoUnlockQuery.isFetching}
-          >
-            {unlockMutation.isPending || autoUnlockQuery.isFetching ? (
-              <ActivityIndicator size="small" color="#ffffff" />
-            ) : (
-              <Ionicons name="finger-print" size={22} color="#ffffff" />
-            )}
-            <Text style={styles.unlockButtonText}>
-              {unlockMutation.isPending || autoUnlockQuery.isFetching ? "Authenticating..." : "Unlock with Biometrics"}
-            </Text>
-          </TouchableOpacity>
+          <PinPad
+            title="Unlock NZ Money Manager"
+            subtitle={
+              biometricEnabled
+                ? "Use biometrics or enter your 6-digit PIN to access your accounts."
+                : "Enter your 6-digit PIN to access your accounts."
+            }
+            value={pinInput}
+            onChange={(nextPin: string): void => {
+              unlockPinMutation.reset()
+              setPinInput(nextPin)
+            }}
+            onComplete={(completedPin: string): void => {
+              unlockPinMutation.mutate(completedPin)
+            }}
+            errorMessage={errorMessage}
+            isLoading={isAuthenticating}
+            showBiometricButton={biometricEnabled}
+            onBiometricPress={(): void => {
+              unlockPinMutation.reset()
+              unlockBioMutation.mutate()
+            }}
+          />
         </View>
       </View>
     )
@@ -92,7 +82,7 @@ const RootLayout = (): React.JSX.Element => {
   return (
     <SafeAreaProvider>
       <QueryClientProvider client={queryClient}>
-        <BiometricLockGate>
+        <AppLockGate>
           <Tabs
             screenOptions={{
               headerStyle: {
@@ -138,7 +128,7 @@ const RootLayout = (): React.JSX.Element => {
               }}
             />
           </Tabs>
-        </BiometricLockGate>
+        </AppLockGate>
         <StatusBar style="light" />
       </QueryClientProvider>
     </SafeAreaProvider>
@@ -153,12 +143,12 @@ const styles = StyleSheet.create({
     backgroundColor: "#1a365d",
     justifyContent: "center",
     alignItems: "center",
-    padding: 24,
+    padding: 20,
   },
   lockCard: {
     backgroundColor: "#ffffff",
-    borderRadius: 20,
-    padding: 28,
+    borderRadius: 22,
+    padding: 24,
     width: "100%",
     maxWidth: 380,
     alignItems: "center",
@@ -167,60 +157,5 @@ const styles = StyleSheet.create({
     shadowOpacity: 0.15,
     shadowRadius: 12,
     elevation: 5,
-  },
-  iconCircle: {
-    width: 80,
-    height: 80,
-    borderRadius: 40,
-    backgroundColor: "#eff6ff",
-    justifyContent: "center",
-    alignItems: "center",
-    marginBottom: 18,
-  },
-  lockTitle: {
-    fontSize: 22,
-    fontWeight: "700",
-    color: "#1e293b",
-    marginBottom: 8,
-  },
-  lockSubtitle: {
-    fontSize: 14,
-    color: "#64748b",
-    textAlign: "center",
-    lineHeight: 20,
-    marginBottom: 20,
-  },
-  errorBanner: {
-    flexDirection: "row",
-    alignItems: "center",
-    backgroundColor: "#fef2f2",
-    borderColor: "#fecaca",
-    borderWidth: 1,
-    borderRadius: 10,
-    padding: 12,
-    marginBottom: 16,
-    width: "100%",
-  },
-  errorText: {
-    color: "#dc2626",
-    fontSize: 13,
-    marginLeft: 8,
-    flex: 1,
-  },
-  unlockButton: {
-    backgroundColor: "#3b82f6",
-    borderRadius: 12,
-    paddingVertical: 14,
-    paddingHorizontal: 20,
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "center",
-    width: "100%",
-  },
-  unlockButtonText: {
-    color: "#ffffff",
-    fontSize: 16,
-    fontWeight: "600",
-    marginLeft: 8,
   },
 })
