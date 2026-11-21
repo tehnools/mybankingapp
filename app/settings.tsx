@@ -30,6 +30,7 @@ import {
 } from "../hooks/use-akahu-data"
 import { useSettingsFormStore } from "../lib/store"
 import { useAppTheme } from "../lib/theme"
+import { getPinFlowCopy } from "../types"
 
 const maskToken = (token: string, prefixLen = 12): string => {
   if (!token) return ""
@@ -170,23 +171,11 @@ const SettingsScreen = (): React.JSX.Element => {
     }
   }
 
-  const pinModalTitle =
-    pinFlowMode === "setup-pin"
-      ? "Create a 6-Digit PIN"
-      : pinFlowMode === "confirm-pin"
-        ? "Confirm Your 6-Digit PIN"
-        : pinFlowMode === "verify-disable-bio"
-          ? "Enter 6-Digit PIN"
-          : "Unlock Credentials"
-
-  const pinModalSubtitle =
-    pinFlowMode === "setup-pin"
-      ? "Your 6-digit PIN is mandatory and protects your tokens if biometrics are unavailable or removed."
-      : pinFlowMode === "confirm-pin"
-        ? "Re-enter your 6-digit PIN. Biometric uplift will follow right after."
-        : pinFlowMode === "verify-disable-bio"
-          ? "Confirm your 6-digit PIN to turn off Biometric Unlock. Your tokens will stay safe."
-          : "Enter your 6-digit PIN to unlock and edit your Akahu tokens."
+  const {
+    isOpen: isPinModalOpen,
+    title: pinModalTitle,
+    subtitle: pinModalSubtitle,
+  } = getPinFlowCopy(pinFlowMode === "confirm-pin" ? { mode: "confirm-pin", firstPinEntry } : { mode: pinFlowMode })
 
   return (
     <KeyboardAvoidingView
@@ -377,10 +366,7 @@ const SettingsScreen = (): React.JSX.Element => {
 
           {activeError && (
             <View
-              style={[
-                styles.messageBanner,
-                { backgroundColor: colors.negativeSoft, borderColor: colors.negative },
-              ]}
+              style={[styles.messageBanner, { backgroundColor: colors.negativeSoft, borderColor: colors.negative }]}
             >
               <Ionicons name="alert-circle" size={18} color={colors.negative} />
               <Text style={[styles.messageText, { color: colors.negative }]}>{activeError}</Text>
@@ -389,10 +375,7 @@ const SettingsScreen = (): React.JSX.Element => {
 
           {!activeError && activeSuccess && (
             <View
-              style={[
-                styles.messageBanner,
-                { backgroundColor: colors.positiveSoft, borderColor: colors.positive },
-              ]}
+              style={[styles.messageBanner, { backgroundColor: colors.positiveSoft, borderColor: colors.positive }]}
             >
               <Ionicons name="checkmark-circle" size={18} color={colors.positive} />
               <Text style={[styles.messageText, { color: colors.positive }]}>{activeSuccess}</Text>
@@ -415,19 +398,12 @@ const SettingsScreen = (): React.JSX.Element => {
                 <Ionicons name="shield-checkmark-outline" size={20} color="#ffffff" />
               )}
               <Text style={styles.saveButtonText}>
-                {saveMutation.isPending
-                  ? "Verifying..."
-                  : hasPin
-                    ? "Verify & Save Tokens"
-                    : "Verify & Set 6-Digit PIN"}
+                {saveMutation.isPending ? "Verifying..." : hasPin ? "Verify & Save Tokens" : "Verify & Set 6-Digit PIN"}
               </Text>
             </TouchableOpacity>
           ) : (
             <TouchableOpacity
-              style={[
-                styles.lockedBannerButton,
-                { backgroundColor: colors.primarySoft, borderColor: colors.primary },
-              ]}
+              style={[styles.lockedBannerButton, { backgroundColor: colors.primarySoft, borderColor: colors.primary }]}
               onPress={handleUnlockToEdit}
             >
               <Ionicons name="lock-closed-outline" size={18} color={colors.primary} />
@@ -440,16 +416,14 @@ const SettingsScreen = (): React.JSX.Element => {
           {hasStoredTokens && (
             <TouchableOpacity style={styles.wipeLinkButton} onPress={() => setShowWipeModal(true)}>
               <Ionicons name="trash-outline" size={16} color={colors.negative} />
-              <Text style={[styles.wipeLinkText, { color: colors.negative }]}>
-                Clear Saved Tokens & Reset PIN
-              </Text>
+              <Text style={[styles.wipeLinkText, { color: colors.negative }]}>Clear Saved Tokens & Reset PIN</Text>
             </TouchableOpacity>
           )}
         </View>
       </ScrollView>
 
       {/* Mandatory 6-Digit PIN Setup / Verification Modal */}
-      <Modal visible={pinFlowMode !== "closed"} transparent animationType="fade" onRequestClose={closePinFlow}>
+      <Modal visible={isPinModalOpen} transparent animationType="fade" onRequestClose={closePinFlow}>
         <View style={styles.modalOverlay}>
           <View style={[styles.modalCard, { backgroundColor: colors.card }]}>
             <PinPad

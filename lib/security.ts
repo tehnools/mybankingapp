@@ -3,7 +3,7 @@ import * as SecureStore from "expo-secure-store"
 import * as LocalAuthentication from "expo-local-authentication"
 import * as Crypto from "expo-crypto"
 import * as Device from "expo-device"
-import { AkahuUser } from "@/types"
+import { StoredUserProfileSchema, SixDigitPinSchema, type AkahuUser, type BiometricAuthResult } from "@/types"
 
 // Cross-platform secure storage helper (uses SecureStore on iOS/Android, localStorage on web preview)
 const setItem = async (key: string, value: string): Promise<void> => {
@@ -82,11 +82,12 @@ export class SecurityManager {
    * Hashes and stores a mandatory 6-digit App PIN using a random salt + SHA-256.
    */
   static async setPin(pin: string): Promise<void> {
-    if (!/^\d{6}$/.test(pin)) {
-      throw new Error("PIN must be exactly 6 digits.")
+    const parsedPin = SixDigitPinSchema.safeParse(pin)
+    if (!parsedPin.success) {
+      throw new Error(parsedPin.error.issues[0]?.message || "PIN must be exactly 6 digits.")
     }
     const salt = Crypto.randomUUID()
-    const hash = await Crypto.digestStringAsync(Crypto.CryptoDigestAlgorithm.SHA256, `${salt}:${pin}`, {
+    const hash = await Crypto.digestStringAsync(Crypto.CryptoDigestAlgorithm.SHA256, `${salt}:${parsedPin.data}`, {
       encoding: Crypto.CryptoEncoding.HEX,
     })
     await setItem(this.PIN_SALT_KEY, salt)
@@ -97,14 +98,19 @@ export class SecurityManager {
    * Verifies a 6-digit PIN against the stored salted SHA-256 hash.
    */
   static async verifyPin(pin: string): Promise<boolean> {
-    if (!/^\d{6}$/.test(pin)) return false
+    const parsedPin = SixDigitPinSchema.safeParse(pin)
+    if (!parsedPin.success) return false
     const salt = await getItem(this.PIN_SALT_KEY)
     const storedHash = await getItem(this.PIN_HASH_KEY)
     if (!salt || !storedHash) return false
 
-    const candidateHash = await Crypto.digestStringAsync(Crypto.CryptoDigestAlgorithm.SHA256, `${salt}:${pin}`, {
-      encoding: Crypto.CryptoEncoding.HEX,
-    })
+    const candidateHash = await Crypto.digestStringAsync(
+      Crypto.CryptoDigestAlgorithm.SHA256,
+      `${salt}:${parsedPin.data}`,
+      {
+        encoding: Crypto.CryptoEncoding.HEX,
+      },
+    )
     return candidateHash === storedHash
   }
 
@@ -139,7 +145,7 @@ export class SecurityManager {
   /**
    * Prompts the user for biometric authentication.
    */
-  static async promptBiometric(promptMessage: string): Promise<{ success: boolean; error?: string }> {
+  static async promptBiometric(promptMessage: string): Promise<BiometricAuthResult> {
     try {
       if (Platform.OS === "web") {
         return { success: false, error: "Biometrics not available on web. Use your 6-digit PIN." }
@@ -185,9 +191,7 @@ export class SecurityManager {
     }
   }
 
-  static async enableBiometricAuth(
-    promptMessage = "Enable biometrics for faster unlock",
-  ): Promise<{ success: boolean; error?: string }> {
+  static async enableBiometricAuth(promptMessage = "Enable biometrics for faster unlock"): Promise<BiometricAuthResult> {
     const auth = await this.promptBiometric(promptMessage)
     if (auth.success) {
       await this.setBiometricEnabled(true)
@@ -243,7 +247,8 @@ export class SecurityManager {
     const raw = await getItem(this.USER_PROFILE_KEY)
     if (!raw) return null
     try {
-      return JSON.parse(raw)
+      const parsed = StoredUserProfileSchema.safeParse(JSON.parse(raw))
+      return parsed.success ? parsed.data : null
     } catch {
       return null
     }

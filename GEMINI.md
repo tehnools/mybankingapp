@@ -1,9 +1,15 @@
 # Workspace Rules & Coding Guidelines
 
-## TypeScript & Function Rules
+## TypeScript, Zod & Function Rules
 
 - **Prefer arrow functions with explicit input parameter types and explicit return types** over standard `function` declarations (`const myFn = (input: InputType): ReturnType => { ... }`).
-- Define all shared interfaces and types in the `types/` directory.
+- Define all shared interfaces, types, and Zod schemas in the `types/` directory.
+- **Use the official `akahu` SDK (pinned with a tilde `~`) for all Akahu API calls and Akahu-owned models** (`Account`, `User`, `Transaction`, `PendingTransaction`, `ConnectionInfo`). Do not duplicate or maintain manual Zod schemas for Akahu's external API responses.
+- **Reserve Zod (`zod`) and `.transform()` for our own boundaries**:
+  1. **User Input / Output**: Validating and sanitizing user-entered tokens (`AkahuPersonalTokensTransformSchema`), clipboard strings (`AkahuClipboardTextTransformSchema`), and 6-digit PINs (`SixDigitPinSchema`).
+  2. **Our Local Database & Storage (`expo-sqlite` & `expo-secure-store`)**: Validating data before inserting into SQLite (`BankAccountSchema`, `BankConnectionUpsertInputSchema`) and transforming SQLite rows (`snake_case` -> `camelCase`) or persisted profiles on read (`BankAccountDbRowTransformSchema`, `createBankConnectionDbRowTransformSchema`, `StoredUserProfileSchema`).
+  3. **Our Own APIs**: Any custom API payloads owned by this project.
+- **Use TypeScript Discriminated Unions** for internal app state and action results (`AkahuConnectResult`, `AkahuConnectionStatus`, `BiometricAuthResult`, `PinFlowState`).
 
 ## React & State Management Rules
 

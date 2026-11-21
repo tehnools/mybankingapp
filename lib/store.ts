@@ -11,7 +11,7 @@ export const useAppStore = create<AppStoreState>((set) => ({
   // Starts false on a cold app launch (when app was closed/terminated and reopened),
   // and stays true across background <-> foreground transitions while the app remains open.
   isSessionUnlocked: false,
-  appState: AppState.currentState,
+  appState: (AppState.currentState as AppStateStatus | null) ?? "active",
   previousAppState: null,
   isReturningFromBackground: false,
   setAccounts: (accounts) => set({ accounts }),

@@ -21,40 +21,38 @@ import {
 } from "../lib/db"
 import { SecurityManager } from "../lib/security"
 import { useAppStore, useLockScreenStore, useSettingsFormStore } from "../lib/store"
-import type {
-  AkahuClipboardPasteResult,
-  AkahuConnectionStatus,
-  AkahuRawAccount,
-  AkahuStoredSettings,
-  AkahuUser,
-  BankAccount,
-  BankConnection,
+import {
+  AkahuClipboardTextTransformSchema,
+  transformAkahuAccountsForDb,
+  transformAkahuAccountToBankAccount,
+  type AkahuClipboardPasteResult,
+  type AkahuConnectionStatus,
+  type AkahuRawAccount,
+  type AkahuStoredSettings,
+  type AkahuUser,
+  type BankAccount,
+  type BankConnection,
 } from "../types"
 
 const extractAndPasteTokensFromClipboard = async (): Promise<AkahuClipboardPasteResult> => {
   try {
     // Brief delay so Android 12+ window focus is active when returning from browser
     await new Promise<void>((resolve) => setTimeout(resolve, 200))
-    const text = (await Clipboard.getStringAsync()).trim()
-    if (!text) {
-      return { pastedAppToken: null, pastedUserToken: null }
-    }
-
-    const appTokenMatch = text.match(/app_token_[A-Za-z0-9]+/)
-    const userTokenMatch = text.match(/user_token_[A-Za-z0-9]+/)
+    const rawText = await Clipboard.getStringAsync()
+    const extracted = AkahuClipboardTextTransformSchema.parse(rawText)
 
     const { draftAppToken, draftUserToken, setDraftAppToken, setDraftUserToken } = useSettingsFormStore.getState()
 
     let pastedAppToken: string | null = null
     let pastedUserToken: string | null = null
 
-    if (appTokenMatch && appTokenMatch[0] !== draftAppToken) {
-      pastedAppToken = appTokenMatch[0]
+    if (extracted.pastedAppToken && extracted.pastedAppToken !== draftAppToken) {
+      pastedAppToken = extracted.pastedAppToken
       setDraftAppToken(pastedAppToken)
     }
 
-    if (userTokenMatch && userTokenMatch[0] !== draftUserToken) {
-      pastedUserToken = userTokenMatch[0]
+    if (extracted.pastedUserToken && extracted.pastedUserToken !== draftUserToken) {
+      pastedUserToken = extracted.pastedUserToken
       setDraftUserToken(pastedUserToken)
     }
 
@@ -80,26 +78,6 @@ export const usePasteAkahuClipboard = (): UseMutationResult<AkahuClipboardPasteR
   return useMutation<AkahuClipboardPasteResult, Error, void>({
     mutationFn: extractAndPasteTokensFromClipboard,
   })
-}
-
-const mapAkahuAccountType = (rawType?: string): BankAccount["type"] => {
-  switch (rawType?.toUpperCase()) {
-    case "CREDITCARD":
-    case "CREDIT_CARD":
-      return "credit"
-    case "SAVINGS":
-    case "TERMDEPOSIT":
-      return "savings"
-    case "KIWISAVER":
-      return "kiwisaver"
-    case "INVESTMENT":
-      return "investment"
-    case "LOAN":
-    case "MORTGAGE":
-      return "loan"
-    default:
-      return "checking"
-  }
 }
 
 export const useAkahuStoredSettings = (): UseQueryResult<AkahuStoredSettings, Error> => {
@@ -232,7 +210,10 @@ export const useAkahuConnection = (): UseQueryResult<AkahuConnectionStatus, Erro
           return { connected: false, user: null }
         }
         const me = await akahuClient.getMe()
-        return { connected: !!me?.item, user: me?.item || null }
+        if (!me?.item) {
+          return { connected: false, user: null }
+        }
+        return { connected: true, user: me.item }
       } catch {
         return { connected: false, user: null }
       }
@@ -266,18 +247,12 @@ export const useSaveAkahuTokens = (): UseMutationResult<
       appToken: string
       userToken: string
     }): Promise<{ user?: AkahuUser; needsPinSetup: boolean }> => {
-      if (!appToken.trim() || !userToken.trim()) {
-        throw new Error("Please enter both your App ID Token and User Access Token.")
-      }
-
       const result = await AkahuAuth.connectWithPersonalTokens(appToken, userToken)
       if (!result.success) {
-        throw new Error(result.error || "Could not verify tokens with Akahu.")
+        throw new Error(result.error)
       }
 
-      if (result.user) {
-        await SecurityManager.storeUserProfile(result.user)
-      }
+      await SecurityManager.storeUserProfile(result.user)
 
       const hasPin = await SecurityManager.hasPin()
       if (!hasPin) {
@@ -351,7 +326,7 @@ export const useToggleBiometrics = (): UseMutationResult<boolean, Error, boolean
       if (enable) {
         const result = await SecurityManager.enableBiometricAuth("Authenticate to enable Biometric Unlock")
         if (!result.success) {
-          throw new Error(result.error || "Could not enable biometric unlock.")
+          throw new Error(result.error)
         }
         return true
       }
@@ -394,37 +369,16 @@ export const useVerifyPinToDisableBiometrics = (): UseMutationResult<boolean, Er
   })
 }
 
-const mapRawAccountToBankAccount = (account: AkahuRawAccount): BankAccount => ({
-  id: account._id,
-  connectionId: account.connection?._id || account._connection,
-  name: account.name,
-  bank: account.connection?.name || "NZ Bank",
-  accountNumber: account.formatted_account || "••••",
-  balance: account.balance?.current ?? 0,
-  availableBalance: account.balance?.available,
-  type: mapAkahuAccountType(account.type),
-  status: account.status,
-  lastRefreshed: account.refreshed?.balance || account.refreshed?.transactions,
-})
-
+/**
+ * Transforms Akahu SDK `Account[]` into validated `BankAccount[]` and deduplicated `BankConnectionUpsertInput[]`,
+ * persists them to SQLite, and syncs bank logos + brand colors.
+ */
 const persistAccountsAndConnections = async (rawAccounts: AkahuRawAccount[]): Promise<void> => {
-  const accounts: BankAccount[] = rawAccounts.map(mapRawAccountToBankAccount)
+  const { accounts, connections } = transformAkahuAccountsForDb(rawAccounts)
   await upsertAccountsToDb(accounts)
 
-  const connectionsMap = new Map<string, Pick<BankConnection, "id" | "name" | "logoUrl">>()
-  for (const raw of rawAccounts) {
-    const connId = raw.connection?._id || raw._connection
-    if (connId && !connectionsMap.has(connId)) {
-      connectionsMap.set(connId, {
-        id: connId,
-        name: raw.connection?.name || "NZ Bank",
-        logoUrl: raw.connection?.logo,
-      })
-    }
-  }
-
-  if (connectionsMap.size > 0) {
-    await upsertConnectionsToDb(Array.from(connectionsMap.values()))
+  if (connections.length > 0) {
+    await upsertConnectionsToDb(connections)
     await syncConnectionBranding()
   }
 }
@@ -521,7 +475,7 @@ export const useAkahuAccountById = (accountId?: string): UseQueryResult<BankAcco
 
       const response = await akahuClient.getAccountById(accountId)
       if (!response?.item) return null
-      return mapRawAccountToBankAccount(response.item)
+      return transformAkahuAccountToBankAccount(response.item)
     },
     enabled: Boolean(accountId) && !!connection?.connected,
   })

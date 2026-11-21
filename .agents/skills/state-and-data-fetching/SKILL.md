@@ -37,3 +37,12 @@ export const maskToken = (token: string, prefixLen = 12): string => {
 ## 4. Derive State Instead of `useEffect` / `useRef` Synchronization
 
 - Compute derived values (such as `isFormLocked`, `isConnected`, totals, and filtered arrays) directly in the render body from `useQuery` results or Zustand selectors rather than syncing them with `useEffect` or tracking previous values with `useRef`.
+
+## 5. Boundary-Driven Zod Validation vs. Official `akahu` SDK Types
+
+- **Official `akahu` SDK (tilde-pinned `~`)**: Always use `AkahuClient` and TypeScript models from `"akahu"` (`Account`, `User`, `Transaction`, `PendingTransaction`, `ConnectionInfo`) for Akahu API requests and responses. Never duplicate Akahu's API schemas in Zod.
+- **Zod Validation & `.transform()` at Our Own Boundaries**:
+  - **User Input / Output**: Token form inputs (`AkahuPersonalTokensTransformSchema`), clipboard extraction (`AkahuClipboardTextTransformSchema`), and 6-digit PIN validation (`SixDigitPinSchema`).
+  - **Our SQLite Database & Device Storage**: Validating records written into `expo-sqlite` (`BankAccountSchema`, `BankConnectionUpsertInputSchema`) and transforming database rows (`snake_case` -> `camelCase`) on read (`BankAccountDbRowTransformSchema`, `createBankConnectionDbRowTransformSchema`, `StoredUserProfileSchema`).
+  - **Our Own APIs**: Any endpoints or schemas owned by this app.
+- **TypeScript Discriminated Unions**: Use clean TypeScript discriminated unions for internal results and UI state machines (`AkahuConnectResult`, `AkahuConnectionStatus`, `BiometricAuthResult`, `PinFlowState`).

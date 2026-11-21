@@ -1,9 +1,168 @@
-export interface AkahuUser {
-  _id: string
-  email?: string
-  first_name?: string
-  last_name?: string
+import { z } from "zod"
+import type {
+  Account as AkahuRawAccount,
+  AccountType as AkahuAccountType,
+  ConnectionInfo as AkahuConnectionInfo,
+  PendingTransaction as AkahuRawPendingTransaction,
+  Transaction as AkahuRawTransaction,
+  TransactionQueryParams as AkahuTransactionQueryParams,
+  User as AkahuUser,
+} from "akahu"
+
+export type {
+  AkahuRawAccount,
+  AkahuAccountType,
+  AkahuConnectionInfo,
+  AkahuRawPendingTransaction,
+  AkahuRawTransaction,
+  AkahuTransactionQueryParams,
+  AkahuUser,
 }
+
+export const BankAccountTypeSchema = z.enum(["checking", "savings", "credit", "investment", "kiwisaver", "loan"])
+export type BankAccountType = z.infer<typeof BankAccountTypeSchema>
+
+export const AkahuAccountStatusSchema = z.enum(["ACTIVE", "INACTIVE"])
+export type AkahuAccountStatus = z.infer<typeof AkahuAccountStatusSchema>
+
+export const BankConnectionSchema = z.object({
+  id: z.string(),
+  name: z.string(),
+  logoUrl: z.string().optional(),
+  /** Resolved `file://` URI of the locally cached logo (undefined if not cached or unsupported, e.g. SVG) */
+  logoUri: z.string().optional(),
+  /** Dominant brand color eyedropped from the logo, as a hex string */
+  primaryColor: z.string().optional(),
+})
+export type BankConnection = z.infer<typeof BankConnectionSchema>
+
+/**
+ * Validates connection metadata before inserting into our `bank_connections` SQLite table.
+ */
+export const BankConnectionUpsertInputSchema = BankConnectionSchema.pick({
+  id: true,
+  name: true,
+  logoUrl: true,
+})
+export type BankConnectionUpsertInput = z.infer<typeof BankConnectionUpsertInputSchema>
+
+/**
+ * Validates account records before inserting into our `bank_accounts` SQLite table.
+ */
+export const BankAccountSchema = z.object({
+  id: z.string(),
+  connectionId: z.string().optional(),
+  name: z.string(),
+  bank: z.string(),
+  accountNumber: z.string(),
+  balance: z.number(),
+  availableBalance: z.number().optional(),
+  type: BankAccountTypeSchema,
+  status: AkahuAccountStatusSchema.optional(),
+  lastRefreshed: z.string().optional(),
+})
+export type BankAccount = z.infer<typeof BankAccountSchema>
+
+/**
+ * Normalizes Akahu `AccountType` values (`CREDITCARD`, `SAVINGS`, `KIWISAVER`, etc.)
+ * or stored DB strings into our app's `BankAccountType` union via a Zod transform.
+ */
+export const AkahuAccountTypeTransformSchema = z
+  .string()
+  .optional()
+  .transform((rawType: string | undefined): BankAccountType => {
+    switch (rawType?.toUpperCase()) {
+      case "CREDITCARD":
+      case "CREDIT_CARD":
+        return "credit"
+      case "SAVINGS":
+      case "TERMDEPOSIT":
+        return "savings"
+      case "KIWISAVER":
+        return "kiwisaver"
+      case "INVESTMENT":
+        return "investment"
+      case "LOAN":
+      case "MORTGAGE":
+        return "loan"
+      default:
+        return "checking"
+    }
+  })
+
+/**
+ * Validates and cleans user-entered Akahu Personal App tokens (user input boundary):
+ * - Trims whitespace
+ * - Strips any leading `Bearer ` prefix from the user token
+ * - Validates `app_token_` and `user_token_` prefixes
+ */
+export const AkahuPersonalTokensTransformSchema = z
+  .object({
+    appToken: z
+      .string()
+      .transform((val: string): string => val.trim())
+      .refine((val: string): boolean => val.length > 0, {
+        message: "Please enter both your App ID Token and User Access Token.",
+      })
+      .refine((val: string): boolean => val.startsWith("app_token_"), {
+        message: "App ID Token must start with 'app_token_'",
+      }),
+    userToken: z
+      .string()
+      .transform((val: string): string => val.replace(/^Bearer\s+/i, "").trim())
+      .refine((val: string): boolean => val.length > 0, {
+        message: "Please enter both your App ID Token and User Access Token.",
+      })
+      .refine((val: string): boolean => val.startsWith("user_token_"), {
+        message: "User Access Token must start with 'user_token_'",
+      }),
+  })
+  .transform(
+    ({
+      appToken,
+      userToken,
+    }: {
+      appToken: string
+      userToken: string
+    }): { cleanAppToken: string; cleanUserToken: string } => ({
+      cleanAppToken: appToken,
+      cleanUserToken: userToken,
+    }),
+  )
+
+export type AkahuCleanedPersonalTokens = z.infer<typeof AkahuPersonalTokensTransformSchema>
+
+/**
+ * Transforms raw user clipboard text into extracted `app_token_...` and `user_token_...` values.
+ */
+export const AkahuClipboardTextTransformSchema = z
+  .string()
+  .transform((rawText: string): { pastedAppToken: string | null; pastedUserToken: string | null } => {
+    const trimmed = rawText.trim()
+    if (!trimmed) {
+      return { pastedAppToken: null, pastedUserToken: null }
+    }
+    const appTokenMatch = trimmed.match(/app_token_[A-Za-z0-9]+/)
+    const userTokenMatch = trimmed.match(/user_token_[A-Za-z0-9]+/)
+    return {
+      pastedAppToken: appTokenMatch ? appTokenMatch[0] : null,
+      pastedUserToken: userTokenMatch ? userTokenMatch[0] : null,
+    }
+  })
+
+export type AkahuClipboardPasteResult = z.infer<typeof AkahuClipboardTextTransformSchema>
+
+/**
+ * Validates the user profile cached in our own local device secure storage (`expo-secure-store`).
+ */
+export const StoredUserProfileSchema = z.object({
+  _id: z.string(),
+  email: z.string().optional(),
+  preferred_name: z.string().optional(),
+  access_granted_at: z.string().optional().default(""),
+  first_name: z.string().optional(),
+  last_name: z.string().optional(),
+})
 
 export interface AkahuStoredSettings {
   appToken: string
@@ -14,81 +173,73 @@ export interface AkahuStoredSettings {
   biometricsDisabledByOs: boolean
 }
 
-export interface AkahuConnectionStatus {
-  connected: boolean
-  user: AkahuUser | null
-}
+/**
+ * TypeScript discriminated union for Akahu connection status (`connected: true` guarantees a non-null `AkahuUser`).
+ */
+export type AkahuConnectionStatus =
+  | { connected: true; user: AkahuUser }
+  | { connected: false; user: null }
 
-export interface AkahuClipboardPasteResult {
-  pastedAppToken: string | null
-  pastedUserToken: string | null
-}
+/**
+ * TypeScript discriminated union for `AkahuAuth.connectWithPersonalTokens` results.
+ */
+export type AkahuConnectResult =
+  | { success: true; user: AkahuUser }
+  | { success: false; error: string }
 
-export interface AkahuRawAccount {
-  _id: string
-  _connection: string
-  name: string
-  formatted_account?: string
-  status: "ACTIVE" | "INACTIVE"
-  type: string
-  attributes?: string[]
-  balance?: {
-    currency: string
-    current: number
-    available?: number
-    limit?: number
-    overdrawn?: boolean
-  }
-  connection: {
-    _id: string
-    name: string
-    logo?: string
-  }
-  refreshed?: {
-    balance?: string
-    transactions?: string
-    meta?: string
-  }
-}
+/**
+ * TypeScript discriminated union for `AkahuAuth.handleAuthCallback` OAuth token exchange results.
+ */
+export type AkahuAuthCallbackResult =
+  | { success: true; accessToken: string }
+  | { success: false; error: string }
 
-export interface AkahuRawTransaction {
-  _id: string
-  _account: string
-  _user: string
-  _connection: string
-  created_at: string
-  updated_at: string
-  date: string
-  description: string
-  amount: number
-  balance?: number
-  type: string
-  merchant?: {
-    _id: string
-    name: string
-    website?: string
-    logo?: string
-  }
-  category?: {
-    _id: string
-    name: string
-    groups?: {
-      personal_finance?: {
-        _id: string
-        name: string
-      }
+/**
+ * Transforms an Akahu SDK `Account` into a validated `BankAccount` ready for our SQLite DB.
+ */
+export const transformAkahuAccountToBankAccount = (account: AkahuRawAccount): BankAccount =>
+  BankAccountSchema.parse({
+    id: account._id,
+    connectionId: account.connection?._id,
+    name: account.name,
+    bank: account.connection?.name || "NZ Bank",
+    accountNumber: account.formatted_account || "••••",
+    balance: account.balance?.current ?? 0,
+    availableBalance: account.balance?.available,
+    type: AkahuAccountTypeTransformSchema.parse(account.type),
+    status: account.status,
+    lastRefreshed: account.refreshed?.balance || account.refreshed?.transactions,
+  })
+
+/**
+ * Transforms a list of Akahu SDK `Account[]` into validated `{ accounts, connections }` ready for our SQLite DB.
+ */
+export const transformAkahuAccountsForDb = (
+  rawAccounts: AkahuRawAccount[],
+): {
+  accounts: BankAccount[]
+  connections: BankConnectionUpsertInput[]
+} => {
+  const accounts: BankAccount[] = []
+  const connectionsMap = new Map<string, BankConnectionUpsertInput>()
+
+  for (const raw of rawAccounts) {
+    accounts.push(transformAkahuAccountToBankAccount(raw))
+    const connId = raw.connection?._id
+    if (connId && !connectionsMap.has(connId)) {
+      connectionsMap.set(
+        connId,
+        BankConnectionUpsertInputSchema.parse({
+          id: connId,
+          name: raw.connection.name || "NZ Bank",
+          logoUrl: raw.connection.logo || undefined,
+        }),
+      )
     }
   }
-  meta?: {
-    particulars?: string
-    code?: string
-    reference?: string
-    other_account?: string
-    card_suffix?: string
-    conversion?: {
-      amount: number
-      currency: string
-      rate: number
-    }
+
+  return {
+    accounts,
+    connections: Array.from(connectionsMap.values()),
   }
 }

@@ -1,9 +1,29 @@
 import { Platform } from "react-native"
 import * as SQLite from "expo-sqlite"
+import { z } from "zod"
 import { deleteAllLogoFiles, getLogoUriFromFileName } from "./logo-files"
-import type { BankAccount, BankAccountDbRow, BankConnection, BankConnectionDbRow } from "../types"
+import {
+  BankAccountDbRowTransformSchema,
+  BankAccountSchema,
+  BankConnectionUpsertInputSchema,
+  createBankConnectionDbRowTransformSchema,
+  PendingConnectionBrandingRowTransformSchema,
+  type BankAccount,
+  type BankAccountDbRow,
+  type BankConnection,
+  type BankConnectionDbRow,
+  type BankConnectionUpsertInput,
+  type PendingConnectionBranding,
+} from "../types"
 
 const DB_NAME = "nz_money_manager.db"
+
+const BankConnectionDbRowTransformSchema = createBankConnectionDbRowTransformSchema(getLogoUriFromFileName)
+const BankAccountDbRowListTransformSchema = z.array(BankAccountDbRowTransformSchema)
+const BankConnectionDbRowListTransformSchema = z.array(BankConnectionDbRowTransformSchema)
+const PendingConnectionBrandingListTransformSchema = z.array(PendingConnectionBrandingRowTransformSchema)
+const BankAccountUpsertListSchema = z.array(BankAccountSchema)
+const BankConnectionUpsertListSchema = z.array(BankConnectionUpsertInputSchema)
 
 let dbInstancePromise: Promise<SQLite.SQLiteDatabase | null> | null = null
 let memoryFallbackAccounts: BankAccount[] = []
@@ -57,27 +77,6 @@ const getDatabase = async (): Promise<SQLite.SQLiteDatabase | null> => {
   return dbInstancePromise
 }
 
-const mapRowToBankAccount = (row: BankAccountDbRow): BankAccount => ({
-  id: row.id,
-  connectionId: row.connection_id ?? undefined,
-  name: row.name,
-  bank: row.bank,
-  accountNumber: row.account_number,
-  balance: row.balance,
-  availableBalance: row.available_balance ?? undefined,
-  type: row.type,
-  status: row.status ?? undefined,
-  lastRefreshed: row.last_refreshed ?? undefined,
-})
-
-const mapRowToBankConnection = (row: BankConnectionDbRow): BankConnection => ({
-  id: row.id,
-  name: row.name,
-  logoUrl: row.logo_url ?? undefined,
-  logoUri: getLogoUriFromFileName(row.logo_file),
-  primaryColor: row.primary_color ?? undefined,
-})
-
 export const getCachedAccountsFromDb = async (): Promise<BankAccount[]> => {
   const db = await getDatabase()
   if (!db) {
@@ -85,7 +84,7 @@ export const getCachedAccountsFromDb = async (): Promise<BankAccount[]> => {
   }
 
   const rows = await db.getAllAsync<BankAccountDbRow>("SELECT * FROM bank_accounts ORDER BY bank ASC, name ASC;")
-  return rows.map(mapRowToBankAccount)
+  return BankAccountDbRowListTransformSchema.parse(rows)
 }
 
 export const getCachedAccountByIdFromDb = async (accountId: string): Promise<BankAccount | null> => {
@@ -97,11 +96,12 @@ export const getCachedAccountByIdFromDb = async (accountId: string): Promise<Ban
   const row = await db.getFirstAsync<BankAccountDbRow>("SELECT * FROM bank_accounts WHERE id = ? LIMIT 1;", [
     accountId,
   ])
-  return row ? mapRowToBankAccount(row) : null
+  return row ? BankAccountDbRowTransformSchema.parse(row) : null
 }
 
 export const upsertAccountsToDb = async (accounts: BankAccount[]): Promise<void> => {
-  memoryFallbackAccounts = accounts
+  const validatedAccounts = BankAccountUpsertListSchema.parse(accounts)
+  memoryFallbackAccounts = validatedAccounts
 
   const db = await getDatabase()
   if (!db) {
@@ -111,7 +111,7 @@ export const upsertAccountsToDb = async (accounts: BankAccount[]): Promise<void>
   const now = Date.now()
   await db.withTransactionAsync(async (): Promise<void> => {
     await db.execAsync("DELETE FROM bank_accounts;")
-    for (const account of accounts) {
+    for (const account of validatedAccounts) {
       await db.runAsync(
         `INSERT OR REPLACE INTO bank_accounts (
           id, connection_id, name, bank, account_number, balance, available_balance, type, status, last_refreshed, updated_at
@@ -141,7 +141,7 @@ export const getCachedConnectionsFromDb = async (): Promise<BankConnection[]> =>
   }
 
   const rows = await db.getAllAsync<BankConnectionDbRow>("SELECT * FROM bank_connections ORDER BY name ASC;")
-  return rows.map(mapRowToBankConnection)
+  return BankConnectionDbRowListTransformSchema.parse(rows)
 }
 
 export const getCachedConnectionByIdFromDb = async (connectionId: string): Promise<BankConnection | null> => {
@@ -153,16 +153,15 @@ export const getCachedConnectionByIdFromDb = async (connectionId: string): Promi
   const row = await db.getFirstAsync<BankConnectionDbRow>("SELECT * FROM bank_connections WHERE id = ? LIMIT 1;", [
     connectionId,
   ])
-  return row ? mapRowToBankConnection(row) : null
+  return row ? BankConnectionDbRowTransformSchema.parse(row) : null
 }
 
 /**
  * Inserts or updates connections. A connection's cached logo file and brand color are kept
  * as long as its `logo_url` is unchanged, and reset when Akahu serves a new logo.
  */
-export const upsertConnectionsToDb = async (
-  connections: Array<Pick<BankConnection, "id" | "name" | "logoUrl">>,
-): Promise<void> => {
+export const upsertConnectionsToDb = async (connections: BankConnectionUpsertInput[]): Promise<void> => {
+  const validatedConnections = BankConnectionUpsertListSchema.parse(connections)
   const db = await getDatabase()
   if (!db) {
     return
@@ -170,7 +169,7 @@ export const upsertConnectionsToDb = async (
 
   const now = Date.now()
   await db.withTransactionAsync(async (): Promise<void> => {
-    for (const connection of connections) {
+    for (const connection of validatedConnections) {
       await db.runAsync(
         `INSERT INTO bank_connections (id, name, logo_url, logo_file, primary_color, updated_at)
          VALUES (?, ?, ?, NULL, NULL, ?)
@@ -186,9 +185,7 @@ export const upsertConnectionsToDb = async (
   })
 }
 
-export const getConnectionsNeedingBranding = async (): Promise<
-  Array<{ id: string; logoUrl: string; logoFile: string | null }>
-> => {
+export const getConnectionsNeedingBranding = async (): Promise<PendingConnectionBranding[]> => {
   const db = await getDatabase()
   if (!db) {
     return []
@@ -197,11 +194,7 @@ export const getConnectionsNeedingBranding = async (): Promise<
   const rows = await db.getAllAsync<BankConnectionDbRow>(
     "SELECT * FROM bank_connections WHERE logo_url IS NOT NULL AND (logo_file IS NULL OR primary_color IS NULL);",
   )
-  return rows.map((row: BankConnectionDbRow) => ({
-    id: row.id,
-    logoUrl: row.logo_url as string,
-    logoFile: row.logo_file,
-  }))
+  return PendingConnectionBrandingListTransformSchema.parse(rows)
 }
 
 export const updateConnectionBranding = async (

@@ -1,35 +1,79 @@
+import * as Crypto from "expo-crypto"
+import { AkahuClient as OfficialAkahuSdkClient, type Paginated } from "akahu"
 import { SecurityManager } from "./security"
-import type { AkahuRawAccount, AkahuRawTransaction, AkahuUser } from "../types"
+import type {
+  AkahuRawAccount,
+  AkahuRawPendingTransaction,
+  AkahuRawTransaction,
+  AkahuTransactionQueryParams,
+  AkahuUser,
+} from "../types"
 
-const AKAHU_BASE_URL = "https://api.akahu.io/v1"
+/**
+ * The official `akahu` SDK uses `uuid.v4()` to generate `Idempotency-Key` headers on POST requests
+ * (such as `/refresh`), which requires `globalThis.crypto.getRandomValues` on React Native (Hermes).
+ * Polyfill it with `expo-crypto`'s native CSPRNG implementation.
+ */
+const ensureWebCryptoPolyfill = (): void => {
+  const globalScope = globalThis as unknown as {
+    crypto?: {
+      getRandomValues?: typeof Crypto.getRandomValues
+      randomUUID?: typeof Crypto.randomUUID
+    }
+  }
+
+  if (!globalScope.crypto) {
+    globalScope.crypto = {
+      getRandomValues: Crypto.getRandomValues,
+      randomUUID: Crypto.randomUUID,
+    }
+    return
+  }
+
+  if (typeof globalScope.crypto.getRandomValues !== "function") {
+    globalScope.crypto.getRandomValues = Crypto.getRandomValues
+  }
+
+  if (typeof globalScope.crypto.randomUUID !== "function") {
+    globalScope.crypto.randomUUID = Crypto.randomUUID
+  }
+}
+
+ensureWebCryptoPolyfill()
 
 export class AkahuClient {
   private appToken: string | null = null
   private accessToken: string | null = null
+  private sdkClient: OfficialAkahuSdkClient | null = null
 
-  async initialize() {
+  async initialize(): Promise<void> {
     this.appToken = await SecurityManager.getSecureData("akahu_app_token")
     this.accessToken = await SecurityManager.getSecureData("akahu_access_token")
+    this.sdkClient =
+      this.appToken && this.appToken.startsWith("app_token_")
+        ? new OfficialAkahuSdkClient({ appToken: this.appToken })
+        : null
   }
 
-  async setCredentials(appToken: string, accessToken: string) {
+  async setCredentials(appToken: string, accessToken: string): Promise<void> {
     const cleanAppToken = appToken.trim()
     const cleanAccessToken = accessToken.replace(/^Bearer\s+/i, "").trim()
 
     this.appToken = cleanAppToken
     this.accessToken = cleanAccessToken
+    this.sdkClient = new OfficialAkahuSdkClient({ appToken: cleanAppToken })
 
     await SecurityManager.storeSecureData("akahu_app_token", cleanAppToken)
     await SecurityManager.storeSecureData("akahu_access_token", cleanAccessToken)
   }
 
-  async setAccessToken(token: string) {
+  async setAccessToken(token: string): Promise<void> {
     const cleanAccessToken = token.replace(/^Bearer\s+/i, "").trim()
     this.accessToken = cleanAccessToken
     await SecurityManager.storeSecureData("akahu_access_token", cleanAccessToken)
   }
 
-  async getStoredCredentials() {
+  async getStoredCredentials(): Promise<{ appToken: string | null; accessToken: string | null }> {
     if (!this.appToken || !this.accessToken) {
       await this.initialize()
     }
@@ -39,87 +83,83 @@ export class AkahuClient {
     }
   }
 
-  async clearCredentials() {
+  async clearCredentials(): Promise<void> {
     this.appToken = null
     this.accessToken = null
+    this.sdkClient = null
     await SecurityManager.deleteSecureData("akahu_app_token")
     await SecurityManager.deleteSecureData("akahu_access_token")
   }
 
-  private async makeRequest<T = any>(endpoint: string, options: RequestInit = {}): Promise<T> {
-    if (!this.appToken || !this.accessToken) {
+  private async getClientAndToken(): Promise<{ sdk: OfficialAkahuSdkClient; userToken: string }> {
+    if (!this.appToken || !this.accessToken || !this.sdkClient) {
       await this.initialize()
     }
 
-    if (!this.appToken || !this.accessToken) {
+    if (!this.appToken || !this.accessToken || !this.sdkClient) {
       throw new Error("Missing Akahu App Token or User Access Token")
     }
 
-    const response = await fetch(`${AKAHU_BASE_URL}${endpoint}`, {
-      ...options,
-      headers: {
-        Authorization: `Bearer ${this.accessToken}`,
-        "X-Akahu-Id": this.appToken,
-        "Content-Type": "application/json",
-        ...options.headers,
-      },
-    })
-
-    const data = await response.json().catch(() => null)
-
-    if (!response.ok || (data && data.success === false)) {
-      const errorMessage = data?.message || `Akahu API error (${response.status})`
-      throw new Error(errorMessage)
-    }
-
-    return data as T
+    return { sdk: this.sdkClient, userToken: this.accessToken }
   }
 
-  async getMe() {
-    return this.makeRequest<{ success: boolean; item: AkahuUser }>("/me")
+  async getMe(): Promise<{ success: true; item: AkahuUser }> {
+    const { sdk, userToken } = await this.getClientAndToken()
+    const item = await sdk.users.get(userToken)
+    return { success: true, item }
   }
 
-  async getAccounts() {
-    return this.makeRequest<{ success: boolean; items: AkahuRawAccount[] }>("/accounts")
+  async getAccounts(): Promise<{ success: true; items: AkahuRawAccount[] }> {
+    const { sdk, userToken } = await this.getClientAndToken()
+    const items = await sdk.accounts.list(userToken)
+    return { success: true, items }
   }
 
-  async getAccountById(accountId: string) {
-    return this.makeRequest<{ success: boolean; item: AkahuRawAccount }>(`/accounts/${encodeURIComponent(accountId)}`)
+  async getAccountById(accountId: string): Promise<{ success: true; item: AkahuRawAccount }> {
+    const { sdk, userToken } = await this.getClientAndToken()
+    const item = await sdk.accounts.get(userToken, accountId)
+    return { success: true, item }
   }
 
   async getTransactions(
     accountId?: string,
-    params?: {
-      start?: string
-      end?: string
-      cursor?: string
-    },
-  ) {
-    const queryParams = new URLSearchParams()
-    if (params?.start) queryParams.append("start", params.start)
-    if (params?.end) queryParams.append("end", params.end)
-    if (params?.cursor) queryParams.append("cursor", params.cursor)
-
-    const basePath = accountId ? `/accounts/${encodeURIComponent(accountId)}/transactions` : "/transactions"
-    const query = queryParams.toString()
-
-    return this.makeRequest<{
-      success: boolean
-      items: AkahuRawTransaction[]
-      cursor?: { next?: string | null }
-    }>(`${basePath}${query ? `?${query}` : ""}`)
+    params?: AkahuTransactionQueryParams,
+  ): Promise<{
+    success: true
+    items: AkahuRawTransaction[]
+    cursor?: Paginated<AkahuRawTransaction>["cursor"]
+  }> {
+    const { sdk, userToken } = await this.getClientAndToken()
+    const paginated = accountId
+      ? await sdk.accounts.listTransactions(userToken, accountId, params)
+      : await sdk.transactions.list(userToken, params)
+    return {
+      success: true,
+      items: paginated.items,
+      cursor: paginated.cursor,
+    }
   }
 
-  async getPendingTransactions(accountId?: string) {
-    const basePath = accountId
-      ? `/accounts/${encodeURIComponent(accountId)}/transactions/pending`
-      : "/transactions/pending"
-    return this.makeRequest<{ success: boolean; items: Omit<AkahuRawTransaction, "_id">[] }>(basePath)
+  async getPendingTransactions(
+    accountId?: string,
+  ): Promise<{ success: true; items: AkahuRawPendingTransaction[] }> {
+    const { sdk, userToken } = await this.getClientAndToken()
+    const items = accountId
+      ? await sdk.accounts.listPendingTransactions(userToken, accountId)
+      : await sdk.transactions.listPending(userToken)
+    return { success: true, items }
   }
 
-  async refreshAccounts(accountOrConnectionId?: string) {
-    const path = accountOrConnectionId ? `/refresh/${encodeURIComponent(accountOrConnectionId)}` : "/refresh"
-    return this.makeRequest<{ success: boolean }>(path, { method: "POST" })
+  async refreshAccounts(accountOrConnectionId?: string): Promise<{ success: true }> {
+    const { sdk, userToken } = await this.getClientAndToken()
+    if (!accountOrConnectionId) {
+      await sdk.accounts.refreshAll(userToken)
+    } else if (accountOrConnectionId.startsWith("conn_")) {
+      await sdk.connections.refresh(userToken, accountOrConnectionId)
+    } else {
+      await sdk.accounts.refresh(userToken, accountOrConnectionId)
+    }
+    return { success: true }
   }
 }
 
