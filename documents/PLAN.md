@@ -41,5 +41,24 @@ By guiding each user to sign up on Akahu as a Personal App developer, accept Aka
 
 ---
 
-## Phase 4: Home Dashboard & Spending Insights — Next
-- Aggregate net worth and spending summaries on the **Home** tab once accounts and transactions are working end-to-end.
+## Phase 4: Home Dashboard — Accounts & Purchase Type Pie Graphs — Next
+
+**Goal:** Build the **Home** tab (`app/index.tsx`) with interactive 2D donut/pie charts and a date-range filter powered by local SQLite data across all connected accounts, using a **swappable chart abstraction** (`components/charts/` + `types/charts.ts`) backed initially by `react-native-gifted-charts` (`react-native-svg` + `expo-linear-gradient`) so the charting library can be swapped later (e.g. to `victory-native` XL + Skia) without changing screen or hook code.
+
+1. **Swappable Chart Layer (`types/charts.ts`, `components/charts/`)**:
+   - Define library-agnostic chart data & prop interfaces (`DonutChartSlice`, `DonutChartProps`, `LineChartSeries`, `ChartLegendItem`).
+   - Wrap `react-native-gifted-charts` inside `components/charts/donut-chart.tsx` and `components/charts/chart-legend.tsx` so screens never import charting-library primitives directly.
+2. **Accounts Breakdown Pie Graph**:
+   - Displays each connected bank account's share of total funds.
+   - Includes a **color-coded list of bank accounts as a legend** (using each bank's eyedropped brand color / distinct shade + account name + NZD balance).
+3. **Purchase Type / Category Spending Pie Graph**:
+   - Collates debit spending across all connected accounts using `useAkahuCategorySpending({ startDate, endDate })`.
+   - Groups uncategorized or unsure purchase types under **"Other"** so the chart stays clean and readable.
+4. **Date Range Selector**:
+   - Allows switching periods (e.g. `1M`, `3M`, `6M`, `1Y`), automatically triggering `useBackfillHistoricalTransactions` when an older range is requested.
+
+---
+
+## Phase 5: Net Gain & Net Worth Line Chart
+
+**Goal:** Add a swappable `<LineChart>` wrapper in `components/charts/` calculating and visualizing **Net Gain** (cashflow: income minus spending per period) and **Net Worth / Net Balance** trends over time across all connected accounts.
