@@ -62,3 +62,13 @@ By guiding each user to sign up on Akahu as a Personal App developer, accept Aka
 ## Phase 5: Net Gain & Net Worth Line Chart
 
 **Goal:** Add a swappable `<LineChart>` wrapper in `components/charts/` calculating and visualizing **Net Gain** (cashflow: income minus spending per period) and **Net Worth / Net Balance** trends over time across all connected accounts.
+
+---
+
+## MVP 2 (Future / Brainstorming): Savings Gamification, Goals & Milestones
+
+**Goal:** Add an entry point on the **Home** tab (`app/index.tsx`) that routes to a dedicated savings & gamification experience (exact design and scope TBD).
+
+- **Savings Goals:** Set target savings amounts and track progress against connected accounts / balances.
+- **Achievements & Milestones:** Unlock badges, streaks, and milestone celebrations as savings goals are reached.
+- **Home Page Entry Point:** Card/tile on the Home dashboard routing into the savings goals & achievements screen.
