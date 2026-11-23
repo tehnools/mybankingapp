@@ -55,6 +55,36 @@ export const BankAccountSchema = z.object({
 })
 export type BankAccount = z.infer<typeof BankAccountSchema>
 
+export const TransactionDirectionSchema = z.enum(["debit", "credit"])
+export type TransactionDirection = z.infer<typeof TransactionDirectionSchema>
+
+export const TransactionMetaSchema = z.object({
+  particulars: z.string().optional(),
+  code: z.string().optional(),
+  reference: z.string().optional(),
+  otherAccount: z.string().optional(),
+  cardSuffix: z.string().optional(),
+  logoUrl: z.string().optional(),
+})
+export type TransactionMeta = z.infer<typeof TransactionMetaSchema>
+
+export const TransactionSchema = z.object({
+  id: z.string(),
+  accountId: z.string(),
+  connectionId: z.string().optional(),
+  amount: z.number(),
+  balance: z.number().optional(),
+  description: z.string(),
+  merchantName: z.string().optional(),
+  category: z.string(),
+  categoryGroup: z.string().optional(),
+  date: z.string(),
+  type: TransactionDirectionSchema,
+  rawType: z.string().optional(),
+  meta: TransactionMetaSchema.optional(),
+})
+export type Transaction = z.infer<typeof TransactionSchema>
+
 export const AkahuAccountTypeTransformSchema = z
   .string()
   .optional()
@@ -204,3 +234,51 @@ export const transformAkahuAccountsForDb = (
     connections: Array.from(connectionsMap.values()),
   }
 }
+
+const formatRawTransactionTypeLabel = (rawType?: string): string => {
+  if (!rawType) return "General"
+  return rawType
+    .toLowerCase()
+    .split(/[\s_]+/)
+    .map((word: string): string => (word ? `${word[0].toUpperCase()}${word.slice(1)}` : ""))
+    .join(" ")
+}
+
+export const transformAkahuTransactionToTransaction = (tx: AkahuRawTransaction): Transaction => {
+  const merchantName = "merchant" in tx && tx.merchant?.name ? tx.merchant.name : undefined
+  const categoryName =
+    "category" in tx && tx.category?.name ? tx.category.name : formatRawTransactionTypeLabel(tx.type)
+  const categoryGroup =
+    "category" in tx && tx.category?.groups?.personal_finance?.name
+      ? tx.category.groups.personal_finance.name
+      : undefined
+  const rawMeta = "meta" in tx ? tx.meta : undefined
+
+  return TransactionSchema.parse({
+    id: tx._id,
+    accountId: tx._account,
+    connectionId: tx._connection,
+    amount: tx.amount,
+    balance: tx.balance,
+    description: tx.description,
+    merchantName,
+    category: categoryName,
+    categoryGroup,
+    date: tx.date,
+    type: tx.amount < 0 ? "debit" : "credit",
+    rawType: tx.type,
+    meta: rawMeta
+      ? {
+          particulars: rawMeta.particulars,
+          code: rawMeta.code,
+          reference: rawMeta.reference,
+          otherAccount: rawMeta.other_account,
+          cardSuffix: rawMeta.card_suffix,
+          logoUrl: rawMeta.logo,
+        }
+      : undefined,
+  })
+}
+
+export const transformAkahuTransactionsForDb = (rawTransactions: AkahuRawTransaction[]): Transaction[] =>
+  rawTransactions.map(transformAkahuTransactionToTransaction)

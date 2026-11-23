@@ -3,8 +3,12 @@ import { z } from "zod"
 import {
   AkahuAccountStatusSchema,
   AkahuAccountTypeTransformSchema,
+  TransactionDirectionSchema,
+  TransactionMetaSchema,
   type BankAccount,
   type BankConnection,
+  type Transaction,
+  type TransactionMeta,
 } from "./akahu"
 
 export const BankConnectionDbRowSchema = z.object({
@@ -69,29 +73,98 @@ export const PendingConnectionBrandingRowTransformSchema = BankConnectionDbRowSc
 }))
 export type PendingConnectionBranding = z.infer<typeof PendingConnectionBrandingRowTransformSchema>
 
+const parseTransactionMetaJson = (metaJson: string | null | undefined): TransactionMeta | undefined => {
+  if (!metaJson) return undefined
+  try {
+    const parsed = TransactionMetaSchema.safeParse(JSON.parse(metaJson))
+    return parsed.success ? parsed.data : undefined
+  } catch {
+    return undefined
+  }
+}
+
+export const BankTransactionDbRowSchema = z.object({
+  id: z.string(),
+  account_id: z.string(),
+  connection_id: z.string().nullable().optional(),
+  amount: z.number(),
+  balance: z.number().nullable().optional(),
+  description: z.string(),
+  merchant_name: z.string().nullable(),
+  category: z.string(),
+  category_group: z.string().nullable().optional(),
+  date: z.string(),
+  type: TransactionDirectionSchema,
+  raw_type: z.string().nullable(),
+  meta_json: z.string().nullable().optional(),
+  updated_at: z.number(),
+})
+export type BankTransactionDbRow = z.infer<typeof BankTransactionDbRowSchema>
+
+export const BankTransactionDbRowTransformSchema = BankTransactionDbRowSchema.transform(
+  (row: BankTransactionDbRow): Transaction => ({
+    id: row.id,
+    accountId: row.account_id,
+    connectionId: row.connection_id ?? undefined,
+    amount: row.amount,
+    balance: row.balance ?? undefined,
+    description: row.description,
+    merchantName: row.merchant_name ?? undefined,
+    category: row.category,
+    categoryGroup: row.category_group ?? undefined,
+    date: row.date,
+    type: row.type,
+    rawType: row.raw_type ?? undefined,
+    meta: parseTransactionMetaJson(row.meta_json),
+  }),
+)
+
 export const SixDigitPinSchema = z.string().regex(/^\d{6}$/, "PIN must be exactly 6 digits.")
 
 export type BiometricAuthResult =
   | { success: true }
   | { success: false; error: string }
 
-export interface Transaction {
-  id: string
-  accountId: string
-  amount: number
-  description: string
-  merchantName?: string
+export interface TransactionFilterOptions {
+  accountId?: string
+  startDate?: string
+  endDate?: string
+}
+
+export interface TransactionSyncOptions {
+  accountId?: string
+  startDate?: string
+  endDate?: string
+  forceFullRange?: boolean
+}
+
+export interface TransactionSyncStateRow {
+  scope_key: string
+  earliest_synced_date: string
+  latest_synced_date: string
+  updated_at: number
+}
+
+export interface CategorySpendingSummary {
   category: string
-  date: string
-  type: "debit" | "credit"
-  rawType?: string
-  meta?: {
-    particulars?: string
-    code?: string
-    reference?: string
-    other_account?: string
-    card_suffix?: string
-  }
+  categoryGroup?: string
+  totalAmount: number
+  transactionCount: number
+}
+
+export interface TransactionPage {
+  items: Transaction[]
+  totalCount: number
+  nextOffset: number | null
+  earliestSyncedDate: string | null
+}
+
+export interface TransactionSyncProgress {
+  syncedCount: number
+  pagesFetched: number
+  earliestSyncedDate: string
+  latestSyncedDate: string
+  completedAt: number
 }
 
 export interface AppStoreState {

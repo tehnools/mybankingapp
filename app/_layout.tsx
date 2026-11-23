@@ -6,7 +6,12 @@ import { SafeAreaProvider } from "react-native-safe-area-context"
 import { StatusBar } from "expo-status-bar"
 import { Ionicons } from "@expo/vector-icons"
 import { PinPad } from "../components/pin-pad"
-import { useAutoBiometricUnlock, useUnlockAppSession, useUnlockAppWithPin } from "../hooks/use-akahu-data"
+import {
+  useAutoBiometricUnlock,
+  useBackgroundTransactionsSync,
+  useUnlockAppSession,
+  useUnlockAppWithPin,
+} from "../hooks/use-akahu-data"
 import { useAppLifecycleState } from "../hooks/use-app-state"
 import { useLockScreenStore } from "../lib/store"
 import { DarkAppTheme, LightAppTheme, useAppTheme } from "../lib/theme"
@@ -82,6 +87,7 @@ const AppLockGate = ({ children }: { children: React.ReactNode }): React.JSX.Ele
 
 const ThemedTabs = (): React.JSX.Element => {
   const { colors } = useAppTheme()
+  useBackgroundTransactionsSync()
 
   return (
     <Tabs

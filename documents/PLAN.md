@@ -30,11 +30,16 @@ By guiding each user to sign up on Akahu as a Personal App developer, accept Aka
 
 ---
 
-## Phase 3: Plug In Account Transactions (`GET /v1/accounts/{id}/transactions`) — Next
+## Phase 3: Plug In Account Transactions (`GET /v1/accounts/{id}/transactions`) ✅ (Complete)
 
-**Goal:** Store and list transactions in `expo-sqlite` inside the reserved transactions section on the Bank Account Detail Page (`app/account/[id].tsx`).
+**Goal:** Sync account transactions via the official `akahu` SDK (`sdk.accounts.listTransactions`), validate and store them in `expo-sqlite` (`bank_transactions` table with `idx_bank_transactions_account_date`), and render them inside `<AccountDetailView>` in `app/accounts.tsx`.
+
+- [x] `TransactionSchema`, `transformAkahuTransactionToTransaction`, and `BankTransactionDbRowTransformSchema` in `types/`
+- [x] `bank_transactions` SQLite table and indexed queries in `lib/db.ts`
+- [x] `useAkahuAccountTransactions` hook with multi-page cursor pagination and offline SQLite fallback in `hooks/use-akahu-data.ts`
+- [x] Transactions list with merchant logos / category icons, signed NZD amounts, running balance, pull-to-refresh, and account-specific Sync in `app/accounts.tsx`
 
 ---
 
-## Phase 4: Home Dashboard & Spending Insights
+## Phase 4: Home Dashboard & Spending Insights — Next
 - Aggregate net worth and spending summaries on the **Home** tab once accounts and transactions are working end-to-end.

@@ -1,5 +1,5 @@
 import React from "react"
-import { View, StyleSheet, FlatList, TouchableOpacity, ActivityIndicator, ScrollView, Image } from "react-native"
+import { View, StyleSheet, FlatList, TouchableOpacity, ActivityIndicator, Image } from "react-native"
 import { router } from "expo-router"
 import { Ionicons } from "@expo/vector-icons"
 import { Text } from "../components/app-text"
@@ -8,14 +8,18 @@ import { getFallbackBankColor, getReadableTextColor } from "../lib/bank-branding
 import { useAppStore } from "../lib/store"
 import { useAppTheme } from "../lib/theme"
 import {
+  useAccountTransactionsSync,
   useAkahuAccountById,
   useAkahuAccounts,
   useAkahuConnection,
   useAkahuConnectionById,
   useAkahuConnectionsMap,
+  useBackfillHistoricalTransactions,
+  useBackgroundTransactionsSync,
+  useInfiniteAccountTransactions,
   useRefreshAkahu,
 } from "../hooks/use-akahu-data"
-import type { BankAccount } from "../types"
+import type { BankAccount, Transaction } from "../types"
 
 type IoniconName = React.ComponentProps<typeof Ionicons>["name"]
 
@@ -37,6 +41,16 @@ const getAccountIcon = (type: BankAccount["type"]): IoniconName => {
   }
 }
 
+const getTransactionIcon = (transaction: Transaction): IoniconName => {
+  const raw = (transaction.rawType || transaction.category).toUpperCase()
+  if (raw.includes("TRANSFER")) return "swap-horizontal-outline"
+  if (raw.includes("EFTPOS") || raw.includes("CARD")) return "card-outline"
+  if (raw.includes("ATM")) return "cash-outline"
+  if (raw.includes("FEE") || raw.includes("TAX")) return "receipt-outline"
+  if (raw.includes("INTEREST") || transaction.type === "credit") return "arrow-down-outline"
+  return "bag-handle-outline"
+}
+
 const formatCurrency = (amount: number): string => {
   const isNegative = amount < 0
   const formatted = Math.abs(amount).toLocaleString("en-NZ", {
@@ -46,10 +60,55 @@ const formatCurrency = (amount: number): string => {
   return isNegative ? `-${formatted}` : formatted
 }
 
+const formatSignedTransactionAmount = (amount: number): string => {
+  const formatted = Math.abs(amount).toLocaleString("en-NZ", {
+    style: "currency",
+    currency: "NZD",
+  })
+  return amount < 0 ? `-${formatted}` : `+${formatted}`
+}
+
+const formatTransactionDate = (isoDate: string): string => {
+  const parsed = new Date(isoDate)
+  if (Number.isNaN(parsed.getTime())) {
+    return isoDate
+  }
+  return parsed.toLocaleDateString("en-NZ", {
+    day: "numeric",
+    month: "short",
+    year: "numeric",
+  })
+}
+
+const buildTransactionSubtitle = (transaction: Transaction): string => {
+  const parts: string[] = [formatTransactionDate(transaction.date)]
+  if (transaction.category) {
+    parts.push(transaction.category)
+  }
+  if (transaction.meta?.cardSuffix) {
+    parts.push(`Card ••${transaction.meta.cardSuffix}`)
+  } else if (transaction.meta?.reference) {
+    parts.push(transaction.meta.reference)
+  }
+  return parts.join(" • ")
+}
+
 const AccountDetailView = ({ accountId, onBack }: { accountId: string; onBack: () => void }): React.JSX.Element => {
   const { colors, dark } = useAppTheme()
   const { data: account, isLoading } = useAkahuAccountById(accountId)
   const { data: bankConnection } = useAkahuConnectionById(account?.connectionId)
+  const backgroundSyncQuery = useBackgroundTransactionsSync()
+  const accountSyncQuery = useAccountTransactionsSync(accountId)
+  const {
+    data: infinitePages,
+    isLoading: isLoadingPages,
+    isFetchingNextPage,
+    hasNextPage,
+    fetchNextPage,
+    error: pagesError,
+  } = useInfiniteAccountTransactions(accountId)
+  const refreshMutation = useRefreshAkahu()
+  const backfillHistoryMutation = useBackfillHistoricalTransactions()
 
   if (isLoading) {
     return (
@@ -82,90 +141,297 @@ const AccountDetailView = ({ accountId, onBack }: { accountId: string; onBack: (
   const badgeOverlayBg = isLightCardText ? "rgba(255, 255, 255, 0.18)" : "rgba(28, 25, 23, 0.12)"
 
   const logoSource = bankConnection?.logoUri || bankConnection?.logoUrl
+  const pages = infinitePages?.pages || []
+  const transactionList = pages.flatMap((page) => page.items)
+  const totalTransactionsCount = pages[0]?.totalCount ?? transactionList.length
+  const earliestSyncedDate = pages[0]?.earliestSyncedDate ?? null
+  const isDownloadingInBackground =
+    backgroundSyncQuery.isFetching || accountSyncQuery.isFetching || backfillHistoryMutation.isPending
+  const isSyncingAccount = refreshMutation.isPending || isDownloadingInBackground
+  const detailErrorMessage =
+    (refreshMutation.error instanceof Error && refreshMutation.error.message) ||
+    (backfillHistoryMutation.error instanceof Error && backfillHistoryMutation.error.message) ||
+    (accountSyncQuery.error instanceof Error && accountSyncQuery.error.message) ||
+    (pagesError instanceof Error && pagesError.message) ||
+    null
 
-  return (
-    <ScrollView
-      style={[styles.detailScroll, { backgroundColor: colors.background }]}
-      contentContainerStyle={styles.detailScrollContent}
-    >
-      <TouchableOpacity style={styles.backRow} onPress={onBack}>
-        <Ionicons name="chevron-back" size={20} color={colors.primary} />
-        <Text style={[styles.backRowText, { color: colors.primary }]} preventOrphans={false}>
-          All Bank Accounts
-        </Text>
-      </TouchableOpacity>
+  const handleSyncAccount = (): void => {
+    refreshMutation.mutate(account.id)
+  }
 
+  const handleLoadMoreTransactions = (): void => {
+    if (hasNextPage && !isFetchingNextPage) {
+      fetchNextPage()
+    }
+  }
+
+  const handleFetchOlderYearFromAkahu = (): void => {
+    const baseMs = earliestSyncedDate ? new Date(earliestSyncedDate).getTime() : Date.now()
+    const validBaseMs = Number.isNaN(baseMs) ? Date.now() : baseMs
+    const olderStartIso = new Date(validBaseMs - 365 * 24 * 60 * 60 * 1000).toISOString()
+    backfillHistoryMutation.mutate({
+      accountId: account.id,
+      startDate: olderStartIso,
+    })
+  }
+
+  const renderTransactionItem = ({ item: tx, index }: { item: Transaction; index: number }): React.JSX.Element => {
+    const isCredit = tx.type === "credit"
+    const primaryLabel = tx.merchantName || tx.description
+    const showRawDescription = Boolean(tx.merchantName && tx.description && tx.merchantName !== tx.description)
+    const isFirst = index === 0
+    const isLast = index === transactionList.length - 1
+
+    return (
       <View
         style={[
-          styles.netCard,
-          {
-            backgroundColor: cardBackground,
-            borderColor: !brandColor && dark ? colors.border : "transparent",
-            borderWidth: !brandColor && dark ? 1 : 0,
-          },
+          styles.transactionRow,
+          { backgroundColor: colors.card, borderColor: colors.border },
+          isFirst && styles.transactionRowFirst,
+          isLast && styles.transactionRowLast,
+          !isLast && styles.transactionRowDivider,
         ]}
       >
-        <View style={styles.bankBadgeRow}>
-          <View style={[styles.bankBadge, { backgroundColor: badgeOverlayBg }]}>
-            {logoSource && <Image source={{ uri: logoSource }} style={styles.detailBankLogo} resizeMode="contain" />}
-            <Text style={[styles.bankBadgeText, { color: cardTextColor }]} preventOrphans={false}>
-              {account.bank}
-            </Text>
-          </View>
-          <View style={[styles.typeBadge, { backgroundColor: badgeOverlayBg }]}>
-            <Text style={[styles.typeBadgeText, { color: cardTextColor }]} preventOrphans={false}>
-              {account.type.toUpperCase()}
-            </Text>
-          </View>
+        <View
+          style={[
+            styles.transactionIconBox,
+            { backgroundColor: isCredit ? colors.positiveSoft : colors.primarySoft },
+          ]}
+        >
+          {tx.meta?.logoUrl ? (
+            <Image source={{ uri: tx.meta.logoUrl }} style={styles.merchantLogo} resizeMode="contain" />
+          ) : (
+            <Ionicons
+              name={getTransactionIcon(tx)}
+              size={20}
+              color={isCredit ? colors.positive : colors.primary}
+            />
+          )}
         </View>
 
-        <Text style={[styles.detailAccountName, { color: cardTextColor }]} preventOrphans={false}>
-          {account.name}
-        </Text>
-        <Text style={[styles.detailAccountNumber, { color: cardMutedTextColor }]} preventOrphans={false}>
-          {account.accountNumber}
-        </Text>
-
-        <View style={[styles.netBalanceBox, { borderTopColor: cardDividerColor }]}>
-          <Text style={[styles.netLabel, { color: cardMutedTextColor }]} preventOrphans={false}>
-            Net Account Balance
+        <View style={styles.transactionInfoCol}>
+          <Text
+            style={[styles.transactionTitle, { color: colors.text }]}
+            numberOfLines={1}
+            preventOrphans={false}
+          >
+            {primaryLabel}
           </Text>
-          <Text style={[styles.netAmount, { color: cardTextColor }]} preventOrphans={false}>
-            {formatCurrency(account.balance)}
+          {showRawDescription && (
+            <Text
+              style={[styles.transactionRawDescription, { color: colors.muted }]}
+              numberOfLines={1}
+              preventOrphans={false}
+            >
+              {tx.description}
+            </Text>
+          )}
+          <Text
+            style={[styles.transactionMetaText, { color: colors.subtext }]}
+            numberOfLines={1}
+            preventOrphans={false}
+          >
+            {buildTransactionSubtitle(tx)}
           </Text>
+        </View>
 
-          {account.availableBalance !== undefined && (
-            <Text style={[styles.availableAmount, { color: cardMutedTextColor }]} preventOrphans={false}>
-              Available Balance: {formatCurrency(account.availableBalance)}
+        <View style={styles.transactionAmountCol}>
+          <Text
+            style={[
+              styles.transactionAmountText,
+              { color: isCredit ? colors.positive : colors.text },
+            ]}
+            preventOrphans={false}
+          >
+            {formatSignedTransactionAmount(tx.amount)}
+          </Text>
+          {tx.balance !== undefined && (
+            <Text style={[styles.transactionBalanceText, { color: colors.muted }]} preventOrphans={false}>
+              {formatCurrency(tx.balance)}
             </Text>
           )}
         </View>
       </View>
+    )
+  }
 
-      <View style={styles.transactionsSection}>
-        <View style={styles.transactionsHeaderRow}>
-          <Text style={[styles.sectionTitle, { color: colors.text }]} preventOrphans={false}>
-            Transactions
-          </Text>
-          <View style={[styles.comingSoonPill, { backgroundColor: colors.primarySoft }]}>
-            <Text style={[styles.comingSoonText, { color: colors.primary }]} preventOrphans={false}>
-              Next Phase
+  return (
+    <FlatList
+      style={[styles.detailScroll, { backgroundColor: colors.background }]}
+      contentContainerStyle={styles.detailScrollContent}
+      data={transactionList}
+      keyExtractor={(item: Transaction): string => item.id}
+      renderItem={renderTransactionItem}
+      onEndReached={handleLoadMoreTransactions}
+      onEndReachedThreshold={0.4}
+      refreshing={refreshMutation.isPending}
+      onRefresh={handleSyncAccount}
+      ListHeaderComponent={
+        <View>
+          <View style={styles.detailTopBar}>
+            <TouchableOpacity style={styles.backRow} onPress={onBack}>
+              <Ionicons name="chevron-back" size={20} color={colors.primary} />
+              <Text style={[styles.backRowText, { color: colors.primary }]} preventOrphans={false}>
+                All Bank Accounts
+              </Text>
+            </TouchableOpacity>
+
+            <TouchableOpacity
+              style={[styles.syncButton, { backgroundColor: colors.primarySoft }]}
+              onPress={handleSyncAccount}
+              disabled={isSyncingAccount}
+            >
+              {isSyncingAccount ? (
+                <ActivityIndicator size="small" color={colors.primary} />
+              ) : (
+                <Ionicons name="refresh" size={16} color={colors.primary} />
+              )}
+              <Text style={[styles.syncButtonText, { color: colors.primary }]} preventOrphans={false}>
+                {refreshMutation.isPending
+                  ? "Syncing..."
+                  : isDownloadingInBackground
+                    ? "Downloading..."
+                    : "Sync"}
+              </Text>
+            </TouchableOpacity>
+          </View>
+
+          <View
+            style={[
+              styles.netCard,
+              {
+                backgroundColor: cardBackground,
+                borderColor: !brandColor && dark ? colors.border : "transparent",
+                borderWidth: !brandColor && dark ? 1 : 0,
+              },
+            ]}
+          >
+            <View style={styles.bankBadgeRow}>
+              <View style={[styles.bankBadge, { backgroundColor: badgeOverlayBg }]}>
+                {logoSource && (
+                  <Image source={{ uri: logoSource }} style={styles.detailBankLogo} resizeMode="contain" />
+                )}
+                <Text style={[styles.bankBadgeText, { color: cardTextColor }]} preventOrphans={false}>
+                  {account.bank}
+                </Text>
+              </View>
+              <View style={[styles.typeBadge, { backgroundColor: badgeOverlayBg }]}>
+                <Text style={[styles.typeBadgeText, { color: cardTextColor }]} preventOrphans={false}>
+                  {account.type.toUpperCase()}
+                </Text>
+              </View>
+            </View>
+
+            <Text style={[styles.detailAccountName, { color: cardTextColor }]} preventOrphans={false}>
+              {account.name}
+            </Text>
+            <Text style={[styles.detailAccountNumber, { color: cardMutedTextColor }]} preventOrphans={false}>
+              {account.accountNumber}
+            </Text>
+
+            <View style={[styles.netBalanceBox, { borderTopColor: cardDividerColor }]}>
+              <Text style={[styles.netLabel, { color: cardMutedTextColor }]} preventOrphans={false}>
+                Net Account Balance
+              </Text>
+              <Text style={[styles.netAmount, { color: cardTextColor }]} preventOrphans={false}>
+                {formatCurrency(account.balance)}
+              </Text>
+
+              {account.availableBalance !== undefined && (
+                <Text style={[styles.availableAmount, { color: cardMutedTextColor }]} preventOrphans={false}>
+                  Available Balance: {formatCurrency(account.availableBalance)}
+                </Text>
+              )}
+            </View>
+          </View>
+
+          <View style={styles.transactionsHeaderRow}>
+            <View>
+              <Text style={[styles.sectionTitle, { color: colors.text }]} preventOrphans={false}>
+                Transactions (1 Year)
+              </Text>
+              {isDownloadingInBackground && (
+                <Text style={[styles.backgroundSyncHint, { color: colors.subtext }]} preventOrphans={false}>
+                  Downloading 1-year history in background...
+                </Text>
+              )}
+            </View>
+            <View style={[styles.comingSoonPill, { backgroundColor: colors.primarySoft }]}>
+              <Text style={[styles.comingSoonText, { color: colors.primary }]} preventOrphans={false}>
+                {transactionList.length} of {totalTransactionsCount}
+              </Text>
+            </View>
+          </View>
+
+          {detailErrorMessage && (
+            <View style={[styles.errorBanner, { backgroundColor: colors.negativeSoft, borderColor: colors.negative }]}>
+              <Ionicons name="alert-circle" size={18} color={colors.negative} />
+              <Text style={[styles.errorText, { color: colors.negative }]}>{detailErrorMessage}</Text>
+            </View>
+          )}
+        </View>
+      }
+      ListEmptyComponent={
+        isLoadingPages || isDownloadingInBackground ? (
+          <View style={[styles.emptyTransactionsBox, { backgroundColor: colors.card, borderColor: colors.border }]}>
+            <ActivityIndicator size="large" color={colors.primary} />
+            <Text style={[styles.loadingText, { color: colors.subtext }]}>
+              Downloading past 1 year of transactions...
             </Text>
           </View>
-        </View>
-
-        <View style={[styles.emptyTransactionsBox, { backgroundColor: colors.card, borderColor: colors.border }]}>
-          <View style={[styles.emptyTransactionsIcon, { backgroundColor: colors.primarySoft }]}>
-            <Ionicons name="receipt-outline" size={30} color={colors.primary} />
+        ) : (
+          <View style={[styles.emptyTransactionsBox, { backgroundColor: colors.card, borderColor: colors.border }]}>
+            <View style={[styles.emptyTransactionsIcon, { backgroundColor: colors.primarySoft }]}>
+              <Ionicons name="receipt-outline" size={30} color={colors.primary} />
+            </View>
+            <Text style={[styles.emptyTransactionsTitle, { color: colors.text }]}>No Transactions Found</Text>
+            <Text style={[styles.emptyTransactionsSubtitle, { color: colors.subtext }]}>
+              No transactions in the past year were returned by Akahu for {account.name}. Tap Sync above to refresh
+              from your bank.
+            </Text>
           </View>
-          <Text style={[styles.emptyTransactionsTitle, { color: colors.text }]}>No Transactions Loaded Yet</Text>
-          <Text style={[styles.emptyTransactionsSubtitle, { color: colors.subtext }]}>
-            This space is reserved for {account.name} transactions. Transaction syncing will be plugged in during the
-            next phase.
-          </Text>
-        </View>
-      </View>
-    </ScrollView>
+        )
+      }
+      ListFooterComponent={
+        isFetchingNextPage ? (
+          <View style={styles.paginationFooter}>
+            <ActivityIndicator size="small" color={colors.primary} />
+            <Text style={[styles.paginationFooterText, { color: colors.subtext }]} preventOrphans={false}>
+              Loading older transactions...
+            </Text>
+          </View>
+        ) : hasNextPage ? (
+          <TouchableOpacity
+            style={[styles.loadMoreButton, { backgroundColor: colors.card, borderColor: colors.border }]}
+            onPress={handleLoadMoreTransactions}
+          >
+            <Text style={[styles.loadMoreButtonText, { color: colors.primary }]} preventOrphans={false}>
+              Load More ({transactionList.length} of {totalTransactionsCount})
+            </Text>
+          </TouchableOpacity>
+        ) : transactionList.length > 0 ? (
+          <View style={styles.paginationFooterCol}>
+            <Text style={[styles.paginationFooterText, { color: colors.muted }]} preventOrphans={false}>
+              {isDownloadingInBackground
+                ? "Downloading older transactions in background..."
+                : earliestSyncedDate
+                  ? `Showing ${totalTransactionsCount} transactions since ${formatTransactionDate(earliestSyncedDate)}`
+                  : `Showing all ${totalTransactionsCount} transactions`}
+            </Text>
+            {!isDownloadingInBackground && (
+              <TouchableOpacity
+                style={[styles.loadMoreButton, { backgroundColor: colors.card, borderColor: colors.border }]}
+                onPress={handleFetchOlderYearFromAkahu}
+              >
+                <Text style={[styles.loadMoreButtonText, { color: colors.primary }]} preventOrphans={false}>
+                  Fetch Older History (+1 Year)
+                </Text>
+              </TouchableOpacity>
+            )}
+          </View>
+        ) : undefined
+      }
+    />
   )
 }
 
@@ -549,6 +815,12 @@ const styles = StyleSheet.create({
     padding: 20,
     paddingBottom: 40,
   },
+  detailTopBar: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    marginBottom: 14,
+  },
   backPillButton: {
     flexDirection: "row",
     alignItems: "center",
@@ -564,8 +836,6 @@ const styles = StyleSheet.create({
   backRow: {
     flexDirection: "row",
     alignItems: "center",
-    alignSelf: "flex-start",
-    marginBottom: 14,
     paddingVertical: 4,
   },
   backRowText: {
@@ -643,9 +913,6 @@ const styles = StyleSheet.create({
     fontSize: 13,
     marginTop: 6,
   },
-  transactionsSection: {
-    flex: 1,
-  },
   transactionsHeaderRow: {
     flexDirection: "row",
     alignItems: "center",
@@ -656,6 +923,10 @@ const styles = StyleSheet.create({
     fontSize: 19,
     fontWeight: "700",
   },
+  backgroundSyncHint: {
+    fontSize: 12,
+    marginTop: 2,
+  },
   comingSoonPill: {
     paddingHorizontal: 10,
     paddingVertical: 4,
@@ -663,6 +934,95 @@ const styles = StyleSheet.create({
   },
   comingSoonText: {
     fontSize: 11,
+    fontWeight: "600",
+  },
+  transactionRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    paddingVertical: 14,
+    paddingHorizontal: 16,
+    borderLeftWidth: 1,
+    borderRightWidth: 1,
+  },
+  transactionRowFirst: {
+    borderTopWidth: 1,
+    borderTopLeftRadius: 16,
+    borderTopRightRadius: 16,
+  },
+  transactionRowLast: {
+    borderBottomWidth: 1,
+    borderBottomLeftRadius: 16,
+    borderBottomRightRadius: 16,
+  },
+  transactionRowDivider: {
+    borderBottomWidth: 1,
+  },
+  transactionIconBox: {
+    width: 42,
+    height: 42,
+    borderRadius: 12,
+    justifyContent: "center",
+    alignItems: "center",
+    marginRight: 12,
+    overflow: "hidden",
+  },
+  merchantLogo: {
+    width: 26,
+    height: 26,
+    borderRadius: 6,
+  },
+  transactionInfoCol: {
+    flex: 1,
+    paddingRight: 10,
+  },
+  transactionTitle: {
+    fontSize: 15,
+    fontWeight: "600",
+    marginBottom: 2,
+  },
+  transactionRawDescription: {
+    fontSize: 12,
+    marginBottom: 2,
+  },
+  transactionMetaText: {
+    fontSize: 12,
+  },
+  transactionAmountCol: {
+    alignItems: "flex-end",
+  },
+  transactionAmountText: {
+    fontSize: 15,
+    fontWeight: "700",
+  },
+  transactionBalanceText: {
+    fontSize: 11,
+    marginTop: 2,
+  },
+  paginationFooter: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    paddingVertical: 18,
+    gap: 8,
+  },
+  paginationFooterCol: {
+    alignItems: "center",
+    justifyContent: "center",
+    paddingVertical: 18,
+  },
+  paginationFooterText: {
+    fontSize: 13,
+  },
+  loadMoreButton: {
+    marginTop: 12,
+    paddingVertical: 12,
+    borderRadius: 12,
+    borderWidth: 1,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  loadMoreButtonText: {
+    fontSize: 14,
     fontWeight: "600",
   },
   emptyTransactionsBox: {

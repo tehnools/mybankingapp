@@ -1,8 +1,12 @@
 import * as Clipboard from "expo-clipboard"
 import {
   useQuery,
+  useInfiniteQuery,
   useMutation,
   useQueryClient,
+  type InfiniteData,
+  type QueryClient,
+  type UseInfiniteQueryResult,
   type UseQueryResult,
   type UseMutationResult,
 } from "@tanstack/react-query"
@@ -16,8 +20,16 @@ import {
   getCachedAccountsFromDb,
   getCachedConnectionByIdFromDb,
   getCachedConnectionsFromDb,
+  getCachedTransactionsFromDb,
+  getCachedTransactionsPageFromDb,
+  getCategorySpendingSummaryFromDb,
+  getNewestTransactionDateFromDb,
+  getTransactionCountForAccountFromDb,
+  getTransactionSyncStateFromDb,
   upsertAccountsToDb,
   upsertConnectionsToDb,
+  upsertTransactionsBatchToDb,
+  upsertTransactionSyncStateToDb,
 } from "../lib/db"
 import { SecurityManager } from "../lib/security"
 import { useAppStore, useLockScreenStore, useSettingsFormStore } from "../lib/store"
@@ -25,6 +37,7 @@ import {
   AkahuClipboardTextTransformSchema,
   transformAkahuAccountsForDb,
   transformAkahuAccountToBankAccount,
+  transformAkahuTransactionsForDb,
   type AkahuClipboardPasteResult,
   type AkahuConnectionStatus,
   type AkahuRawAccount,
@@ -32,7 +45,152 @@ import {
   type AkahuUser,
   type BankAccount,
   type BankConnection,
+  type CategorySpendingSummary,
+  type Transaction,
+  type TransactionFilterOptions,
+  type TransactionPage,
+  type TransactionSyncOptions,
+  type TransactionSyncProgress,
 } from "../types"
+
+export const DEFAULT_TRANSACTION_HISTORY_DAYS = 365
+const INCREMENTAL_LOOKBACK_DAYS = 14
+const MAX_BACKGROUND_PAGES = 60
+export const TRANSACTIONS_PAGE_SIZE = 25
+
+export const getDaysAgoIsoString = (days: number): string => {
+  const date = new Date(Date.now() - days * 24 * 60 * 60 * 1000)
+  return date.toISOString()
+}
+
+const resolveSyncWindow = async (
+  options: TransactionSyncOptions = {},
+): Promise<{
+  windows: Array<{ start: string; end?: string }>
+  targetEarliestIso: string
+  targetLatestIso: string
+}> => {
+  const { accountId, startDate, endDate, forceFullRange = false } = options
+  const scopeKey = accountId || "all"
+  const nowIso = endDate || new Date().toISOString()
+  const targetEarliestIso = startDate || getDaysAgoIsoString(DEFAULT_TRANSACTION_HISTORY_DAYS)
+
+  if (forceFullRange) {
+    return {
+      windows: [{ start: targetEarliestIso, end: endDate }],
+      targetEarliestIso,
+      targetLatestIso: nowIso,
+    }
+  }
+
+  const cachedCount = await getTransactionCountForAccountFromDb(accountId)
+  const syncState =
+    (await getTransactionSyncStateFromDb(scopeKey)) ?? (await getTransactionSyncStateFromDb("all"))
+
+  if (cachedCount === 0 || !syncState) {
+    return {
+      windows: [{ start: targetEarliestIso, end: endDate }],
+      targetEarliestIso,
+      targetLatestIso: nowIso,
+    }
+  }
+
+  const windows: Array<{ start: string; end?: string }> = []
+
+  // If the caller requests an older historical start date than what we have synced so far
+  // (e.g. scrolling back past 1 year or viewing a multi-year pie chart on Home),
+  // download only the missing older historical slice [targetEarliestIso, syncState.earliest_synced_date].
+  if (targetEarliestIso < syncState.earliest_synced_date) {
+    windows.push({
+      start: targetEarliestIso,
+      end: syncState.earliest_synced_date,
+    })
+  }
+
+  // Always check for new / recently settled transactions near the head of the timeline
+  if (!endDate || endDate > syncState.latest_synced_date) {
+    const newestDate = (await getNewestTransactionDateFromDb(accountId)) || syncState.latest_synced_date
+    const newestMs = new Date(newestDate).getTime()
+    const overlapStartIso = Number.isNaN(newestMs)
+      ? targetEarliestIso
+      : new Date(
+          Math.max(
+            newestMs - INCREMENTAL_LOOKBACK_DAYS * 24 * 60 * 60 * 1000,
+            new Date(targetEarliestIso).getTime(),
+          ),
+        ).toISOString()
+
+    windows.push({
+      start: overlapStartIso,
+      end: endDate,
+    })
+  }
+
+  return {
+    windows,
+    targetEarliestIso:
+      targetEarliestIso < syncState.earliest_synced_date ? targetEarliestIso : syncState.earliest_synced_date,
+    targetLatestIso: nowIso > syncState.latest_synced_date ? nowIso : syncState.latest_synced_date,
+  }
+}
+
+export const streamTransactionsToDb = async (
+  queryClient: QueryClient,
+  options: TransactionSyncOptions = {},
+): Promise<TransactionSyncProgress> => {
+  const { accountId } = options
+  const scopeKey = accountId || "all"
+  const { windows, targetEarliestIso, targetLatestIso } = await resolveSyncWindow(options)
+
+  let syncedCount = 0
+  let pagesFetched = 0
+
+  for (const window of windows) {
+    let cursor: string | undefined = undefined
+    let completedAllPagesForWindow = false
+
+    for (let pageIndex = 0; pageIndex < MAX_BACKGROUND_PAGES; pageIndex += 1) {
+      const page = await akahuClient.getTransactions(accountId, {
+        start: window.start,
+        end: window.end,
+        cursor,
+      })
+      const items = page.items || []
+      pagesFetched += 1
+
+      if (items.length > 0) {
+        const transformed = transformAkahuTransactionsForDb(items)
+        await upsertTransactionsBatchToDb(transformed)
+        syncedCount += transformed.length
+        await queryClient.invalidateQueries({ queryKey: ["akahu", "transactions-page"] })
+        await queryClient.invalidateQueries({ queryKey: ["akahu", "transactions"] })
+        await queryClient.invalidateQueries({ queryKey: ["akahu", "category-spending"] })
+      }
+
+      const nextCursor = page.cursor?.next ?? undefined
+      if (!nextCursor) {
+        completedAllPagesForWindow = true
+        break
+      }
+      cursor = nextCursor
+    }
+
+    if (completedAllPagesForWindow) {
+      await upsertTransactionSyncStateToDb(scopeKey, {
+        earliestSyncedDate: window.start,
+        latestSyncedDate: window.end || targetLatestIso,
+      })
+    }
+  }
+
+  return {
+    syncedCount,
+    pagesFetched,
+    earliestSyncedDate: targetEarliestIso,
+    latestSyncedDate: targetLatestIso,
+    completedAt: Date.now(),
+  }
+}
 
 const extractAndPasteTokensFromClipboard = async (): Promise<AkahuClipboardPasteResult> => {
   try {
@@ -456,6 +614,132 @@ export const useAkahuAccountById = (accountId?: string): UseQueryResult<BankAcco
   })
 }
 
+export const useBackgroundTransactionsSync = (
+  options: TransactionSyncOptions = {},
+): UseQueryResult<TransactionSyncProgress, Error> => {
+  const { data: connection } = useAkahuConnection()
+  const queryClient = useQueryClient()
+
+  return useQuery<TransactionSyncProgress, Error>({
+    queryKey: ["akahu", "background-transactions-sync", options.accountId, options.startDate, options.endDate],
+    queryFn: async (): Promise<TransactionSyncProgress> => {
+      return await streamTransactionsToDb(queryClient, options)
+    },
+    enabled: !!connection?.connected,
+    staleTime: 1000 * 60 * 10,
+  })
+}
+
+export const useAccountTransactionsSync = (
+  accountId?: string,
+  dateRange?: { startDate?: string; endDate?: string },
+): UseQueryResult<TransactionSyncProgress, Error> => {
+  const { data: connection } = useAkahuConnection()
+  const queryClient = useQueryClient()
+
+  return useQuery<TransactionSyncProgress, Error>({
+    queryKey: ["akahu", "account-transactions-sync", accountId, dateRange?.startDate, dateRange?.endDate],
+    queryFn: async (): Promise<TransactionSyncProgress> => {
+      if (!accountId) {
+        const nowIso = new Date().toISOString()
+        return {
+          syncedCount: 0,
+          pagesFetched: 0,
+          earliestSyncedDate: nowIso,
+          latestSyncedDate: nowIso,
+          completedAt: Date.now(),
+        }
+      }
+      return await streamTransactionsToDb(queryClient, {
+        accountId,
+        startDate: dateRange?.startDate,
+        endDate: dateRange?.endDate,
+      })
+    },
+    enabled: Boolean(accountId) && !!connection?.connected,
+    staleTime: 1000 * 60 * 5,
+  })
+}
+
+export const useBackfillHistoricalTransactions = (): UseMutationResult<
+  TransactionSyncProgress,
+  Error,
+  TransactionSyncOptions
+> => {
+  const queryClient = useQueryClient()
+
+  return useMutation<TransactionSyncProgress, Error, TransactionSyncOptions>({
+    mutationFn: async (options: TransactionSyncOptions): Promise<TransactionSyncProgress> => {
+      return await streamTransactionsToDb(queryClient, options)
+    },
+  })
+}
+
+export const useInfiniteAccountTransactions = (
+  accountId?: string,
+  options: { startDate?: string; endDate?: string; pageSize?: number } = {},
+): UseInfiniteQueryResult<InfiniteData<TransactionPage>, Error> => {
+  const { data: connection } = useAkahuConnection()
+  const pageSize = options.pageSize ?? TRANSACTIONS_PAGE_SIZE
+
+  return useInfiniteQuery<
+    TransactionPage,
+    Error,
+    InfiniteData<TransactionPage>,
+    [string, string, string | undefined, string | undefined, string | undefined, number],
+    number
+  >({
+    queryKey: ["akahu", "transactions-page", accountId, options.startDate, options.endDate, pageSize],
+    initialPageParam: 0,
+    queryFn: async ({ pageParam }: { pageParam: number }): Promise<TransactionPage> => {
+      if (!accountId) {
+        return { items: [], totalCount: 0, nextOffset: null, earliestSyncedDate: null }
+      }
+      return await getCachedTransactionsPageFromDb({
+        accountId,
+        startDate: options.startDate,
+        endDate: options.endDate,
+        limit: pageSize,
+        offset: pageParam,
+      })
+    },
+    getNextPageParam: (lastPage: TransactionPage): number | undefined => lastPage.nextOffset ?? undefined,
+    enabled: Boolean(accountId) && !!connection?.connected,
+    staleTime: 0,
+  })
+}
+
+export const useAkahuTransactions = (
+  filters: TransactionFilterOptions = {},
+): UseQueryResult<Transaction[], Error> => {
+  const { data: connection } = useAkahuConnection()
+
+  return useQuery<Transaction[], Error>({
+    queryKey: ["akahu", "transactions", filters.accountId, filters.startDate, filters.endDate],
+    queryFn: async (): Promise<Transaction[]> => {
+      return await getCachedTransactionsFromDb(filters)
+    },
+    enabled: !!connection?.connected,
+  })
+}
+
+export const useAkahuAccountTransactions = (accountId?: string): UseQueryResult<Transaction[], Error> =>
+  useAkahuTransactions({ accountId })
+
+export const useAkahuCategorySpending = (
+  filters: TransactionFilterOptions = {},
+): UseQueryResult<CategorySpendingSummary[], Error> => {
+  const { data: connection } = useAkahuConnection()
+
+  return useQuery<CategorySpendingSummary[], Error>({
+    queryKey: ["akahu", "category-spending", filters.accountId, filters.startDate, filters.endDate],
+    queryFn: async (): Promise<CategorySpendingSummary[]> => {
+      return await getCategorySpendingSummaryFromDb(filters)
+    },
+    enabled: !!connection?.connected,
+  })
+}
+
 export const useRefreshAkahu = (): UseMutationResult<{ success: boolean }, Error, string | undefined> => {
   const queryClient = useQueryClient()
 
@@ -465,6 +749,13 @@ export const useRefreshAkahu = (): UseMutationResult<{ success: boolean }, Error
       const response = await akahuClient.getAccounts()
       await clearConnectionBrandColors()
       await persistAccountsAndConnections(response.items || [])
+
+      if (accountOrConnectionId && accountOrConnectionId.startsWith("acc_")) {
+        await streamTransactionsToDb(queryClient, { accountId: accountOrConnectionId })
+      } else {
+        await streamTransactionsToDb(queryClient)
+      }
+
       return refreshResult
     },
     onSuccess: async (): Promise<void> => {
@@ -472,6 +763,9 @@ export const useRefreshAkahu = (): UseMutationResult<{ success: boolean }, Error
       await queryClient.invalidateQueries({ queryKey: ["akahu", "account"] })
       await queryClient.invalidateQueries({ queryKey: ["akahu", "connections"] })
       await queryClient.invalidateQueries({ queryKey: ["akahu", "connection-brand"] })
+      await queryClient.invalidateQueries({ queryKey: ["akahu", "transactions-page"] })
+      await queryClient.invalidateQueries({ queryKey: ["akahu", "transactions"] })
+      await queryClient.invalidateQueries({ queryKey: ["akahu", "category-spending"] })
     },
   })
 }
