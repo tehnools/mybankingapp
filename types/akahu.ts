@@ -29,16 +29,11 @@ export const BankConnectionSchema = z.object({
   id: z.string(),
   name: z.string(),
   logoUrl: z.string().optional(),
-  /** Resolved `file://` URI of the locally cached logo (undefined if not cached or unsupported, e.g. SVG) */
   logoUri: z.string().optional(),
-  /** Dominant brand color eyedropped from the logo, as a hex string */
   primaryColor: z.string().optional(),
 })
 export type BankConnection = z.infer<typeof BankConnectionSchema>
 
-/**
- * Validates connection metadata before inserting into our `bank_connections` SQLite table.
- */
 export const BankConnectionUpsertInputSchema = BankConnectionSchema.pick({
   id: true,
   name: true,
@@ -46,9 +41,6 @@ export const BankConnectionUpsertInputSchema = BankConnectionSchema.pick({
 })
 export type BankConnectionUpsertInput = z.infer<typeof BankConnectionUpsertInputSchema>
 
-/**
- * Validates account records before inserting into our `bank_accounts` SQLite table.
- */
 export const BankAccountSchema = z.object({
   id: z.string(),
   connectionId: z.string().optional(),
@@ -63,10 +55,6 @@ export const BankAccountSchema = z.object({
 })
 export type BankAccount = z.infer<typeof BankAccountSchema>
 
-/**
- * Normalizes Akahu `AccountType` values (`CREDITCARD`, `SAVINGS`, `KIWISAVER`, etc.)
- * or stored DB strings into our app's `BankAccountType` union via a Zod transform.
- */
 export const AkahuAccountTypeTransformSchema = z
   .string()
   .optional()
@@ -90,12 +78,6 @@ export const AkahuAccountTypeTransformSchema = z
     }
   })
 
-/**
- * Validates and cleans user-entered Akahu Personal App tokens (user input boundary):
- * - Trims whitespace
- * - Strips any leading `Bearer ` prefix from the user token
- * - Validates `app_token_` and `user_token_` prefixes
- */
 export const AkahuPersonalTokensTransformSchema = z
   .object({
     appToken: z
@@ -132,9 +114,6 @@ export const AkahuPersonalTokensTransformSchema = z
 
 export type AkahuCleanedPersonalTokens = z.infer<typeof AkahuPersonalTokensTransformSchema>
 
-/**
- * Transforms raw user clipboard text into extracted `app_token_...` and `user_token_...` values.
- */
 export const AkahuClipboardTextTransformSchema = z
   .string()
   .transform((rawText: string): { pastedAppToken: string | null; pastedUserToken: string | null } => {
@@ -152,9 +131,6 @@ export const AkahuClipboardTextTransformSchema = z
 
 export type AkahuClipboardPasteResult = z.infer<typeof AkahuClipboardTextTransformSchema>
 
-/**
- * Validates the user profile cached in our own local device secure storage (`expo-secure-store`).
- */
 export const StoredUserProfileSchema = z.object({
   _id: z.string(),
   email: z.string().optional(),
@@ -173,30 +149,18 @@ export interface AkahuStoredSettings {
   biometricsDisabledByOs: boolean
 }
 
-/**
- * TypeScript discriminated union for Akahu connection status (`connected: true` guarantees a non-null `AkahuUser`).
- */
 export type AkahuConnectionStatus =
   | { connected: true; user: AkahuUser }
   | { connected: false; user: null }
 
-/**
- * TypeScript discriminated union for `AkahuAuth.connectWithPersonalTokens` results.
- */
 export type AkahuConnectResult =
   | { success: true; user: AkahuUser }
   | { success: false; error: string }
 
-/**
- * TypeScript discriminated union for `AkahuAuth.handleAuthCallback` OAuth token exchange results.
- */
 export type AkahuAuthCallbackResult =
   | { success: true; accessToken: string }
   | { success: false; error: string }
 
-/**
- * Transforms an Akahu SDK `Account` into a validated `BankAccount` ready for our SQLite DB.
- */
 export const transformAkahuAccountToBankAccount = (account: AkahuRawAccount): BankAccount =>
   BankAccountSchema.parse({
     id: account._id,
@@ -211,9 +175,6 @@ export const transformAkahuAccountToBankAccount = (account: AkahuRawAccount): Ba
     lastRefreshed: account.refreshed?.balance || account.refreshed?.transactions,
   })
 
-/**
- * Transforms a list of Akahu SDK `Account[]` into validated `{ accounts, connections }` ready for our SQLite DB.
- */
 export const transformAkahuAccountsForDb = (
   rawAccounts: AkahuRawAccount[],
 ): {

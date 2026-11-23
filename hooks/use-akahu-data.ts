@@ -36,7 +36,6 @@ import {
 
 const extractAndPasteTokensFromClipboard = async (): Promise<AkahuClipboardPasteResult> => {
   try {
-    // Brief delay so Android 12+ window focus is active when returning from browser
     await new Promise<void>((resolve) => setTimeout(resolve, 200))
     const rawText = await Clipboard.getStringAsync()
     const extracted = AkahuClipboardTextTransformSchema.parse(rawText)
@@ -84,8 +83,6 @@ export const useAkahuStoredSettings = (): UseQueryResult<AkahuStoredSettings, Er
   return useQuery<AkahuStoredSettings, Error>({
     queryKey: ["akahu", "stored-settings"],
     queryFn: async (): Promise<AkahuStoredSettings> => {
-      // If biometrics were removed from the phone OS, gracefully disable the biometric shortcut
-      // without wiping tokens — the mandatory 6-digit PIN remains active as fallback!
       const bioSync = await SecurityManager.syncDeviceBiometricAvailability()
       const stored = await akahuClient.getStoredCredentials()
       const hasPin = await SecurityManager.hasPin()
@@ -174,7 +171,6 @@ export const useUnlockCredentialsForm = (): UseMutationResult<boolean, Error, { 
         }
       }
 
-      // Fallback to mandatory 6-digit PIN modal
       openPinFlow("verify-edit")
       return false
     },
@@ -222,12 +218,6 @@ export const useAkahuConnection = (): UseQueryResult<AkahuConnectionStatus, Erro
   })
 }
 
-/**
- * Step 1 of saving Akahu tokens:
- * - Verifies tokens against Akahu (/v1/me)
- * - If no 6-digit PIN exists yet, opens the mandatory 6-digit PIN setup flow (PIN first -> Biometric uplift)
- * - If a 6-digit PIN already exists, saves and locks the updated tokens immediately
- */
 export const useSaveAkahuTokens = (): UseMutationResult<
   { user?: AkahuUser; needsPinSetup: boolean },
   Error,
@@ -256,7 +246,6 @@ export const useSaveAkahuTokens = (): UseMutationResult<
 
       const hasPin = await SecurityManager.hasPin()
       if (!hasPin) {
-        // Mandatory 6-digit PIN setup first, followed by optional biometric uplift
         openPinFlow("setup-pin")
         return { user: result.user, needsPinSetup: true }
       }
@@ -274,11 +263,6 @@ export const useSaveAkahuTokens = (): UseMutationResult<
   })
 }
 
-/**
- * Step 2 of initial setup:
- * - Saves the confirmed mandatory 6-digit PIN
- * - Immediately offers Biometric Uplift if the device has biometrics enrolled
- */
 export const useCompletePinAndBiometricUplift = (): UseMutationResult<
   { biometricsEnabled: boolean },
   Error,
@@ -313,10 +297,6 @@ export const useCompletePinAndBiometricUplift = (): UseMutationResult<
   })
 }
 
-/**
- * Enables or disables the optional Biometrics shortcut without wiping stored tokens
- * (the mandatory 6-digit PIN stays active as the primary fallback).
- */
 export const useToggleBiometrics = (): UseMutationResult<boolean, Error, boolean> => {
   const queryClient = useQueryClient()
   const openPinFlow = useSettingsFormStore((s) => s.openPinFlow)
@@ -331,7 +311,6 @@ export const useToggleBiometrics = (): UseMutationResult<boolean, Error, boolean
         return true
       }
 
-      // Turning biometrics OFF: try biometric confirmation first, or fall back to 6-digit PIN
       const auth = await SecurityManager.promptBiometric("Authenticate to turn off Biometric Unlock")
       if (auth.success) {
         await SecurityManager.setBiometricEnabled(false)
@@ -369,10 +348,6 @@ export const useVerifyPinToDisableBiometrics = (): UseMutationResult<boolean, Er
   })
 }
 
-/**
- * Transforms Akahu SDK `Account[]` into validated `BankAccount[]` and deduplicated `BankConnectionUpsertInput[]`,
- * persists them to SQLite, and syncs bank logos + brand colors.
- */
 const persistAccountsAndConnections = async (rawAccounts: AkahuRawAccount[]): Promise<void> => {
   const { accounts, connections } = transformAkahuAccountsForDb(rawAccounts)
   await upsertAccountsToDb(accounts)

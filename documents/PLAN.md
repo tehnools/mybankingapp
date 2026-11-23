@@ -20,21 +20,13 @@ By guiding each user to sign up on Akahu as a Personal App developer, accept Aka
 
 ---
 
-## Phase 2: Local SQLite Bank Accounts List & Account Detail Page ✅ (Current)
+## Phase 2: Local SQLite Bank Accounts, Connections, Logos & Brand Color Detail View ✅ (Complete)
 
-**Goal:** Sync connected NZ bank accounts from Akahu (`GET /v1/accounts`) into local **`expo-sqlite`** storage, list them in the **Accounts** tab with a side arrow (`>`), and open a dedicated **Bank Account Page** showing the account's net balance and an empty space reserved for transactions below.
+**Goal:** Sync connected NZ bank accounts and bank connections from Akahu (`GET /v1/accounts` via the official `akahu` SDK) into local **`expo-sqlite`** storage, cache bank logos locally, eyedrop each bank's brand color, list accounts in the **Accounts** tab with a side arrow (`>`), and open the **Bank Account Detail View** showing the account's net balance card styled in the bank's brand color with an empty space reserved for transactions below.
 
-1. **Local SQLite Storage (`lib/db.ts` via `expo-sqlite`)**:
-   - Store and query `bank_accounts` locally on device (`id`, `name`, `bank`, `account_number`, `balance`, `available_balance`, `type`, `status`, `last_refreshed`, `updated_at`).
-   - Clear the local SQLite `bank_accounts` table whenever tokens are wiped.
-2. **Accounts List Tab (`app/accounts.tsx`)**:
-   - Fetch accounts from Akahu and persist them in `expo-sqlite` via TanStack Query (`useAkahuAccounts()`).
-   - Render each bank account card with its bank name, account name, account number, balance, and a **side arrow (`>`)**.
-   - Provide **Sync** (`POST /v1/refresh` + SQLite upsert) and **Link Bank on Akahu** (`https://my.akahu.nz`) actions.
-3. **Individual Bank Account Detail Page (`app/account/[id].tsx`)**:
-   - Clicking an account card's `>` row navigates to `/account/[id]`.
-   - Displays the **Net Balance Card** for that specific bank account at the top (Current Net Balance, Available Balance, Bank & Account Number).
-   - Reserves a **Transactions Section** below (currently showing a clean empty state until transaction syncing is plugged in).
+- [x] Local SQLite Storage (`bank_accounts` & `bank_connections` in `lib/db.ts` with Zod boundary validation & `.transform()`)
+- [x] Non-secure local bank logo caching (`lib/logo-files.ts`) & brand color eyedropper (`lib/bank-branding.ts`)
+- [x] Accounts List Tab & `<AccountDetailView>` (`app/accounts.tsx`) with eyedropped brand color Net Balance card and reserved Transactions placeholder section
 
 ---
 

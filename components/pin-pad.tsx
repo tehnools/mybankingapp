@@ -71,7 +71,6 @@ export const PinPad = ({
         <Text style={[styles.subtitle, { color: colors.subtext }]}>{subtitle}</Text>
       </View>
 
-      {/* 6 PIN Dots */}
       <View style={styles.dotsRow}>
         {[0, 1, 2, 3, 4, 5].map((index: number): React.JSX.Element => {
           const filled = index < value.length
@@ -101,7 +100,6 @@ export const PinPad = ({
         <View style={styles.statusSlot} />
       )}
 
-      {/* Numeric Keypad */}
       <View style={styles.keypad}>
         {KEYPAD_ROWS.map((row: string[], rowIndex: number): React.JSX.Element => (
           <View key={rowIndex} style={styles.keypadRow}>

@@ -10,10 +10,11 @@ description: >-
 
 Follow these rules whenever creating or modifying React Native screens, components, utilities, and hooks in this project:
 
-## 1. Prefer Typed Arrow Functions Over `function` Declarations
+## 1. Prefer Typed Arrow Functions & Self-Documenting Code Over `function` Declarations and Comments
 
 - Always write functions and React components as `const` arrow functions with **explicit parameter types** and **explicit return types** (e.g. `: React.JSX.Element`, `: string`, `: Promise<boolean>`).
 - Avoid using the `function` keyword.
+- Do not add verbose JSDoc or inline comments when descriptive function names, parameter types, and return types already communicate what the code does.
 
 ```tsx
 // GOOD: Arrow function with explicit input and return types

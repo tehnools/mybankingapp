@@ -5,7 +5,6 @@ import * as Crypto from "expo-crypto"
 import * as Device from "expo-device"
 import { StoredUserProfileSchema, SixDigitPinSchema, type AkahuUser, type BiometricAuthResult } from "@/types"
 
-// Cross-platform secure storage helper (uses SecureStore on iOS/Android, localStorage on web preview)
 const setItem = async (key: string, value: string): Promise<void> => {
   if (Platform.OS === "web") {
     if (typeof window !== "undefined" && window.localStorage) {
@@ -78,9 +77,6 @@ export class SecurityManager {
     }
   }
 
-  /**
-   * Hashes and stores a mandatory 6-digit App PIN using a random salt + SHA-256.
-   */
   static async setPin(pin: string): Promise<void> {
     const parsedPin = SixDigitPinSchema.safeParse(pin)
     if (!parsedPin.success) {
@@ -94,9 +90,6 @@ export class SecurityManager {
     await setItem(this.PIN_HASH_KEY, hash)
   }
 
-  /**
-   * Verifies a 6-digit PIN against the stored salted SHA-256 hash.
-   */
   static async verifyPin(pin: string): Promise<boolean> {
     const parsedPin = SixDigitPinSchema.safeParse(pin)
     if (!parsedPin.success) return false
@@ -128,9 +121,6 @@ export class SecurityManager {
     await deleteItem(this.PIN_SALT_KEY)
   }
 
-  /**
-   * Checks whether device biometric hardware is available and enrolled.
-   */
   static async canUseBiometrics(): Promise<boolean> {
     if (Platform.OS === "web") return false
     try {
@@ -142,9 +132,6 @@ export class SecurityManager {
     }
   }
 
-  /**
-   * Prompts the user for biometric authentication.
-   */
   static async promptBiometric(promptMessage: string): Promise<BiometricAuthResult> {
     try {
       if (Platform.OS === "web") {
@@ -209,10 +196,6 @@ export class SecurityManager {
     }
   }
 
-  /**
-   * If the user removed fingerprints / Face ID from their phone OS while biometrics were enabled,
-   * gracefully disable the biometric shortcut and keep stored tokens + 6-digit PIN intact!
-   */
   static async syncDeviceBiometricAvailability(): Promise<{
     biometricEnabled: boolean
     biometricsDisabledByOs: boolean

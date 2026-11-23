@@ -8,8 +8,6 @@ export const useAppStore = create<AppStoreState>((set) => ({
   transactions: [],
   selectedAccountId: null,
   isConnected: false,
-  // Starts false on a cold app launch (when app was closed/terminated and reopened),
-  // and stays true across background <-> foreground transitions while the app remains open.
   isSessionUnlocked: false,
   appState: (AppState.currentState as AppStateStatus | null) ?? "active",
   previousAppState: null,
@@ -110,7 +108,6 @@ export const useSettingsFormStore = create<SettingsFormState>((set) => ({
   setPinError: (pinError: string | null) => set({ pinError, pinInput: "" }),
 }))
 
-// Track foreground/background transitions for Android & iOS without locking the session
 AppState.addEventListener("change", (nextState: AppStateStatus): void => {
   useAppStore.getState().setAppStateTransition(nextState)
   focusManager.setFocused(nextState === "active")

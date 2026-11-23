@@ -10,24 +10,14 @@ import {
 const REDIRECT_URI = Linking.createURL("/auth/callback")
 
 export class AkahuAuth {
-  /**
-   * Opens the Akahu portal so the user can sign up and connect their NZ bank accounts.
-   */
   static async openAkahuAccountSetup(): Promise<void> {
     await Linking.openURL("https://my.akahu.nz/developers")
   }
 
-  /**
-   * Opens the Akahu Personal App developer page so the user can create & copy their App Token and User Token.
-   */
   static async openAkahuDeveloperTokens(): Promise<void> {
     await Linking.openURL("https://my.akahu.nz/developers")
   }
 
-  /**
-   * Validates and saves the user's Akahu Personal App credentials (`app_token_...` and `user_token_...`)
-   * using a Zod transform + discriminated union result.
-   */
   static async connectWithPersonalTokens(appToken: string, userAccessToken: string): Promise<AkahuConnectResult> {
     const parsedTokens = AkahuPersonalTokensTransformSchema.safeParse({
       appToken,
@@ -46,7 +36,6 @@ export class AkahuAuth {
       const { cleanAppToken, cleanUserToken } = parsedTokens.data
       await akahuClient.setCredentials(cleanAppToken, cleanUserToken)
 
-      // Verify credentials by calling /me
       const meResponse = await akahuClient.getMe()
       if (!meResponse?.item) {
         await akahuClient.clearCredentials()
@@ -69,9 +58,6 @@ export class AkahuAuth {
     }
   }
 
-  /**
-   * Optional OAuth2 flow for commercial Akahu apps.
-   */
   static async initiateConnection(appToken?: string): Promise<boolean> {
     try {
       const stored = await akahuClient.getStoredCredentials()

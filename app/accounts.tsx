@@ -73,7 +73,6 @@ const AccountDetailView = ({ accountId, onBack }: { accountId: string; onBack: (
     )
   }
 
-  // Use the eyedropped main logo color from SQLite (with fallback to known NZ bank brand color or theme header)
   const brandColor = bankConnection?.primaryColor || getFallbackBankColor(account.bank)
   const cardBackground = brandColor || (dark ? colors.card : colors.headerBackground)
   const cardTextColor = brandColor ? getReadableTextColor(brandColor) : colors.headerText
@@ -89,7 +88,6 @@ const AccountDetailView = ({ accountId, onBack }: { accountId: string; onBack: (
       style={[styles.detailScroll, { backgroundColor: colors.background }]}
       contentContainerStyle={styles.detailScrollContent}
     >
-      {/* Back to Accounts Row */}
       <TouchableOpacity style={styles.backRow} onPress={onBack}>
         <Ionicons name="chevron-back" size={20} color={colors.primary} />
         <Text style={[styles.backRowText, { color: colors.primary }]} preventOrphans={false}>
@@ -97,7 +95,6 @@ const AccountDetailView = ({ accountId, onBack }: { accountId: string; onBack: (
         </Text>
       </TouchableOpacity>
 
-      {/* Net Balance Card Styled with Eyedropped Bank Logo Brand Color */}
       <View
         style={[
           styles.netCard,
@@ -145,7 +142,6 @@ const AccountDetailView = ({ accountId, onBack }: { accountId: string; onBack: (
         </View>
       </View>
 
-      {/* Reserved Transactions Section (Empty Placeholder for Now) */}
       <View style={styles.transactionsSection}>
         <View style={styles.transactionsHeaderRow}>
           <Text style={[styles.sectionTitle, { color: colors.text }]} preventOrphans={false}>
@@ -295,7 +291,6 @@ const AccountsScreen = (): React.JSX.Element => {
 
   return (
     <View style={[styles.container, { backgroundColor: colors.background }]}>
-      {/* Header Bar */}
       <View style={styles.headerRow}>
         <View style={{ flex: 1 }}>
           <Text style={[styles.headerTitle, { color: colors.text }]}>Your Bank Accounts</Text>

@@ -72,14 +72,12 @@ const SettingsScreen = (): React.JSX.Element => {
     setPinError,
   } = useSettingsFormStore()
 
-  // Derived state directly from TanStack Query + Zustand
   const hasStoredTokens = Boolean(storedSettings?.hasStoredTokens)
   const hasPin = Boolean(storedSettings?.hasPin)
   const isFormLocked = hasStoredTokens && hasPin && !isUnlockedForEditing
   const biometricEnabled = Boolean(storedSettings?.biometricEnabled)
   const isConnected = Boolean(connectionStatus?.connected)
 
-  // Automatically check clipboard on focus when form is unlocked and auto-paste app_token_ / user_token_
   const autoPasteQuery = useAutoPasteAkahuClipboard(!isFormLocked)
 
   const activeAppToken = isFormLocked ? storedSettings?.appToken || "" : draftAppToken
@@ -183,7 +181,6 @@ const SettingsScreen = (): React.JSX.Element => {
       behavior={Platform.OS === "ios" ? "padding" : undefined}
     >
       <ScrollView contentContainerStyle={styles.scrollContent} keyboardShouldPersistTaps="handled">
-        {/* Connection Status Card */}
         <View
           style={[
             styles.statusCard,
@@ -215,7 +212,6 @@ const SettingsScreen = (): React.JSX.Element => {
           </View>
         </View>
 
-        {/* Security & Biometrics Card */}
         <View style={[styles.card, { backgroundColor: colors.card, borderColor: colors.border }]}>
           <View style={styles.securityHeaderRow}>
             <View style={[styles.biometricIconBox, { backgroundColor: colors.positiveSoft }]}>
@@ -257,7 +253,6 @@ const SettingsScreen = (): React.JSX.Element => {
           </View>
         </View>
 
-        {/* Akahu Token Form */}
         <View style={[styles.card, { backgroundColor: colors.card, borderColor: colors.border }]}>
           <View style={styles.cardHeaderRow}>
             <View style={{ flex: 1 }}>
@@ -422,7 +417,6 @@ const SettingsScreen = (): React.JSX.Element => {
         </View>
       </ScrollView>
 
-      {/* Mandatory 6-Digit PIN Setup / Verification Modal */}
       <Modal visible={isPinModalOpen} transparent animationType="fade" onRequestClose={closePinFlow}>
         <View style={styles.modalOverlay}>
           <View style={[styles.modalCard, { backgroundColor: colors.card }]}>
@@ -444,7 +438,6 @@ const SettingsScreen = (): React.JSX.Element => {
         </View>
       </Modal>
 
-      {/* Explicit Wipe Confirmation Modal */}
       <Modal visible={showWipeModal} transparent animationType="fade" onRequestClose={() => setShowWipeModal(false)}>
         <View style={styles.modalOverlay}>
           <View style={[styles.modalCard, { backgroundColor: colors.card }]}>

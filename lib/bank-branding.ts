@@ -3,11 +3,8 @@ import { downloadLogoFile, getLogoUriFromFileName } from "./logo-files"
 import { getCachedConnectionsFromDb, getConnectionsNeedingBranding, updateConnectionBranding } from "./db"
 
 const HEX_COLOR_PATTERN = /^#[0-9a-fA-F]{6}$/
-
-/** Logos that sample as near-white make the card unreadable against the light canvas, so they are ignored. */
 const MAX_BRAND_LUMINANCE = 0.85
 
-/** Known NZ bank brand colors used as fallback when a logo is an SVG or native palette sampling is unavailable. */
 const KNOWN_NZ_BANK_COLORS: Record<string, string> = {
   anz: "#007DBA",
   asb: "#D99B00",
@@ -45,7 +42,6 @@ export const getRelativeLuminance = (hex: string): number => {
   return 0.2126 * channels[0] + 0.7152 * channels[1] + 0.0722 * channels[2]
 }
 
-/** Picks dark or white text depending on which contrasts better with the brand color background. */
 export const getReadableTextColor = (backgroundHex: string): string => {
   if (!HEX_COLOR_PATTERN.test(backgroundHex)) {
     return "#FFFFFF"
@@ -72,10 +68,6 @@ const pickBrandColor = (result: ImageColorsResult): string | null => {
   return null
 }
 
-/**
- * Eyedrops the main brand color from a locally cached logo file or URL.
- * @returns a `#RRGGBB` hex string, or null if no usable color could be sampled.
- */
 export const extractBrandColor = async (logoUri: string, bankName?: string): Promise<string | null> => {
   try {
     const result = await getColors(logoUri, { fallback: "#000000", cache: false })
@@ -89,11 +81,6 @@ export const extractBrandColor = async (logoUri: string, bankName?: string): Pro
   return getFallbackBankColor(bankName)
 }
 
-/**
- * Downloads any missing bank logos and eyedrops their brand colors into SQLite.
- * Connections that already have both a cached logo and a color are skipped, so this is cheap to
- * call after every account sync.
- */
 export const syncConnectionBranding = async (): Promise<void> => {
   const pending = await getConnectionsNeedingBranding()
   if (pending.length === 0) return

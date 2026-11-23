@@ -9,11 +9,6 @@ import type {
   AkahuUser,
 } from "../types"
 
-/**
- * The official `akahu` SDK uses `uuid.v4()` to generate `Idempotency-Key` headers on POST requests
- * (such as `/refresh`), which requires `globalThis.crypto.getRandomValues` on React Native (Hermes).
- * Polyfill it with `expo-crypto`'s native CSPRNG implementation.
- */
 const ensureWebCryptoPolyfill = (): void => {
   const globalScope = globalThis as unknown as {
     crypto?: {

@@ -3,6 +3,7 @@
 ## TypeScript, Zod & Function Rules
 
 - **Prefer arrow functions with explicit input parameter types and explicit return types** over standard `function` declarations (`const myFn = (input: InputType): ReturnType => { ... }`).
+- **Keep comments minimal**: Rely on descriptive function/variable names, explicit parameter types, and explicit return types to document intent rather than adding JSDoc blocks or explanatory comments.
 - Define all shared interfaces, types, and Zod schemas in the `types/` directory.
 - **Use the official `akahu` SDK (pinned with a tilde `~`) for all Akahu API calls and Akahu-owned models** (`Account`, `User`, `Transaction`, `PendingTransaction`, `ConnectionInfo`). Do not duplicate or maintain manual Zod schemas for Akahu's external API responses.
 - **Reserve Zod (`zod`) and `.transform()` for our own boundaries**:

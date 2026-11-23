@@ -60,7 +60,6 @@ const getDatabase = async (): Promise<SQLite.SQLiteDatabase | null> => {
           );
         `)
 
-        // Migration: databases created before bank connections existed lack bank_accounts.connection_id
         const columns = await db.getAllAsync<{ name: string }>("PRAGMA table_info(bank_accounts);")
         if (!columns.some((column: { name: string }): boolean => column.name === "connection_id")) {
           await db.execAsync("ALTER TABLE bank_accounts ADD COLUMN connection_id TEXT;")
@@ -156,10 +155,6 @@ export const getCachedConnectionByIdFromDb = async (connectionId: string): Promi
   return row ? BankConnectionDbRowTransformSchema.parse(row) : null
 }
 
-/**
- * Inserts or updates connections. A connection's cached logo file and brand color are kept
- * as long as its `logo_url` is unchanged, and reset when Akahu serves a new logo.
- */
 export const upsertConnectionsToDb = async (connections: BankConnectionUpsertInput[]): Promise<void> => {
   const validatedConnections = BankConnectionUpsertListSchema.parse(connections)
   const db = await getDatabase()

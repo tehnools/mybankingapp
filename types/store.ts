@@ -17,20 +17,18 @@ export const BankConnectionDbRowSchema = z.object({
 })
 export type BankConnectionDbRow = z.infer<typeof BankConnectionDbRowSchema>
 
-/**
- * Creates a Zod transform schema that converts a SQLite `BankConnectionDbRow` (`snake_case`)
- * into a `BankConnection` domain object (`camelCase`), resolving `logo_file` into a `file://` URI.
- */
 export const createBankConnectionDbRowTransformSchema = (
   resolveLogoUri: (logoFile: string | null) => string | undefined,
 ) =>
-  BankConnectionDbRowSchema.transform((row: BankConnectionDbRow): BankConnection => ({
-    id: row.id,
-    name: row.name,
-    logoUrl: row.logo_url ?? undefined,
-    logoUri: resolveLogoUri(row.logo_file),
-    primaryColor: row.primary_color ?? undefined,
-  }))
+  BankConnectionDbRowSchema.transform(
+    (row: BankConnectionDbRow): BankConnection => ({
+      id: row.id,
+      name: row.name,
+      logoUrl: row.logo_url ?? undefined,
+      logoUri: resolveLogoUri(row.logo_file),
+      primaryColor: row.primary_color ?? undefined,
+    }),
+  )
 
 export const BankAccountDbRowSchema = z.object({
   id: z.string(),
@@ -47,9 +45,6 @@ export const BankAccountDbRowSchema = z.object({
 })
 export type BankAccountDbRow = z.infer<typeof BankAccountDbRowSchema>
 
-/**
- * Transforms a SQLite `BankAccountDbRow` (`snake_case`) into a `BankAccount` domain object (`camelCase`).
- */
 export const BankAccountDbRowTransformSchema = BankAccountDbRowSchema.transform(
   (row: BankAccountDbRow): BankAccount => ({
     id: row.id,
@@ -65,9 +60,6 @@ export const BankAccountDbRowTransformSchema = BankAccountDbRowSchema.transform(
   }),
 )
 
-/**
- * Transforms a SQLite `BankConnectionDbRow` that needs logo/color branding into `{ id, logoUrl, logoFile }`.
- */
 export const PendingConnectionBrandingRowTransformSchema = BankConnectionDbRowSchema.extend({
   logo_url: z.string(),
 }).transform((row): { id: string; logoUrl: string; logoFile: string | null } => ({
@@ -77,15 +69,11 @@ export const PendingConnectionBrandingRowTransformSchema = BankConnectionDbRowSc
 }))
 export type PendingConnectionBranding = z.infer<typeof PendingConnectionBrandingRowTransformSchema>
 
-/**
- * Validates user-entered 6-digit numeric PIN input.
- */
 export const SixDigitPinSchema = z.string().regex(/^\d{6}$/, "PIN must be exactly 6 digits.")
 
-/**
- * TypeScript discriminated union for Biometric Authentication results (`success: true` vs `success: false`).
- */
-export type BiometricAuthResult = { success: true } | { success: false; error: string }
+export type BiometricAuthResult =
+  | { success: true }
+  | { success: false; error: string }
 
 export interface Transaction {
   id: string
@@ -125,9 +113,6 @@ export interface AppStoreState {
 
 export type PinFlowMode = "closed" | "setup-pin" | "confirm-pin" | "verify-edit" | "verify-disable-bio"
 
-/**
- * TypeScript discriminated union representing the current PIN modal state.
- */
 export type PinFlowState =
   | { mode: "closed" }
   | { mode: "setup-pin" }
@@ -135,7 +120,9 @@ export type PinFlowState =
   | { mode: "verify-edit" }
   | { mode: "verify-disable-bio" }
 
-export const getPinFlowCopy = (flow: PinFlowState): { isOpen: boolean; title: string; subtitle: string } => {
+export const getPinFlowCopy = (
+  flow: PinFlowState,
+): { isOpen: boolean; title: string; subtitle: string } => {
   switch (flow.mode) {
     case "closed":
       return {
@@ -147,7 +134,8 @@ export const getPinFlowCopy = (flow: PinFlowState): { isOpen: boolean; title: st
       return {
         isOpen: true,
         title: "Create a 6-Digit PIN",
-        subtitle: "Your 6-digit PIN is mandatory and protects your tokens if biometrics are unavailable or removed.",
+        subtitle:
+          "Your 6-digit PIN is mandatory and protects your tokens if biometrics are unavailable or removed.",
       }
     case "confirm-pin":
       return {
