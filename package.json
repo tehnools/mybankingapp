@@ -1,5 +1,5 @@
 {
-  "name": "nz-money-manager",
+  "name": "nz-my-banking-app",
   "version": "1.0.0",
   "private": true,
   "packageManager": "pnpm@11.20.0",
@@ -14,6 +14,9 @@
     "eas": "pnpx eas-cli@27.10.0",
     "eas:apk": "pnpm eas build -p android --profile preview",
     "eas:build": "pnpm eas build",
+    "eas:preview": "pnpm eas build -p android --profile preview",
+    "eas:staging": "pnpm eas build -p android --profile staging",
+    "eas:prod": "pnpm eas build -p android --profile production",
     "eas:submit": "pnpm eas submit",
     "format": "prettier --write ."
   },
@@ -35,6 +38,7 @@
     "expo-secure-store": "~58.0.3",
     "expo-sqlite": "~58.0.18",
     "expo-status-bar": "~58.0.5",
+    "expo-system-ui": "~58.0.7",
     "react": "19.3.0",
     "react-dom": "19.3.0",
     "react-native": "0.88.1",
@@ -50,6 +54,7 @@
   "devDependencies": {
     "@babel/core": "^7.29.13",
     "@types/react": "^19.2.0",
+    "babel-preset-expo": "~58.0.26",
     "prettier": "^3.10.1",
     "typescript": "^5.8.0"
   }
