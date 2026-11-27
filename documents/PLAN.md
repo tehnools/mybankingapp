@@ -1,8 +1,10 @@
 # Staged Plan: Zero-Fee NZ Money Manager (Expo + Akahu Personal App)
 
 ## Why This Architecture? (100% Zero Fees & Open Source)
+
 Akahu charges commercial fees for multi-user OAuth apps, **but provides free "Personal App" developer access** for individuals accessing their own bank accounts.
 By guiding each user to sign up on Akahu as a Personal App developer, accept Akahu's developer agreement, and bring their own `app_token_...` and `user_token_...` into the mobile app:
+
 - **$0 API fees** for you and your users.
 - **$0 server costs** (the mobile app calls `https://api.akahu.io/v1` directly from the phone with no backend needed).
 - **100% on-device privacy** (tokens and salted PIN hash live inside hardware-backed `expo-secure-store`, and bank accounts are cached locally in `expo-sqlite`).
@@ -65,10 +67,25 @@ By guiding each user to sign up on Akahu as a Personal App developer, accept Aka
 
 ---
 
-## MVP 2 (Future / Brainstorming): Savings Gamification, Goals & Milestones
+## MVP 2 (Future / Brainstorming): Savings Goals & Spreadsheet / CSV Exports
 
-**Goal:** Add an entry point on the **Home** tab (`app/index.tsx`) that routes to a dedicated savings & gamification experience (exact design and scope TBD).
+**Goal:** Add an entry point on the **Home** tab (`app/index.tsx`) for Savings Goals, plus free CSV & cloud spreadsheet export/sync options (exact design TBD).
 
-- **Savings Goals:** Set target savings amounts and track progress against connected accounts / balances.
-- **Achievements & Milestones:** Unlock badges, streaks, and milestone celebrations as savings goals are reached.
-- **Home Page Entry Point:** Card/tile on the Home dashboard routing into the savings goals & achievements screen.
+- **Savings Goals:**
+  - Cadence options: **Weekly**, **Fortnightly**, **Monthly (default)**, and **Yearly**.
+  - Scope: Aggregates **all connected accounts** (no per-account selection).
+  - Home Page Entry Point: Card/tile on the Home dashboard routing into the savings goals screen.
+- **CSV & Cloud Spreadsheet Export / Sync:**
+  - **Local CSV Export / Share:** 100% offline and free via `expo-file-system` + `expo-sharing`.
+  - **Google Sheets (Free, $0 API fees):** Upload/update a Google Sheet created by the app using the non-sensitive `drive.file` scope (avoids paid CASA security audits) via `@react-native-google-signin/google-signin` or `expo-auth-session`.
+  - **Microsoft OneDrive (Free for personal accounts):** Upload `.csv` / `.xlsx` files to OneDrive via Microsoft Graph (`Files.ReadWrite.AppFolder`). *(Note: Microsoft Graph's live `/workbook` Excel API does not support personal OneDrive accounts — file upload works for free, live cell editing requires M365 Business.)*
+
+---
+
+## MVP 3 (Future / Brainstorming): Gamification & Encrypted Google Drive DB Backup
+
+**Goal:** Layer gamification on top of savings goals and add encrypted, cross-device database backup to Google Drive (exact design TBD).
+
+- **Achievements & Milestones:** Unlock badges, streaks, and milestone celebrations as savings targets and financial milestones are reached.
+- **Encrypted SQLite Backup to Google Drive (Free, $0 API fees):**
+  - Snapshot `nz_money_manager.db` safely (`VACUUM INTO`), encrypt on-device with **AES-256-GCM** (via `expo-crypto`) using a user-chosen backup passphrase/recovery key so it can be restored on a new phone, and upload to Google Drive's hidden `appDataFolder` (`drive.appdata` non-sensitive scope — no CASA audit).
